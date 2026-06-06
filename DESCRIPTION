@@ -1,0 +1,33 @@
+Type: Package
+Package: gps2gtfs
+Title: High-Performance GPS to GTFS Converter
+Version: 0.1.0
+Authors@R: c(
+    person("Egor", "Kotov", , "kotov.egor@gmail.com", role = c("aut", "cre", "cph"),
+           comment = c(ORCID = "0000-0001-6690-5345")),
+    person("Aaivu", role = "cph")
+  )
+Description: Preprocesses raw GPS trajectory data of public transit and
+    transforms it to GTFS format. Provides a high-performance R port of
+    the 'gps2gtfs' Python package by Aaivu (Ratneswaran et al., 2023)
+    <doi:10.1109/ICCT56969.2023.10075789>. Heavy computational tasks are
+    offloaded to an extremely fast compiled Rust backend or a C++ (Rcpp)
+    backend. Automatic backend selection prefers Rust, then Rcpp, and falls
+    back to a slower pure R implementation utilizing 'data.table' and 'sf'.
+License: MIT + file LICENSE
+Depends:
+    R (>= 4.2)
+Imports:
+    data.table,
+    Rcpp (>= 1.0.0)
+Suggests:
+    sf,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+LinkingTo:
+    Rcpp
+Config/rextendr/version: 0.5.0
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.3
+SystemRequirements: Cargo (Rust's package manager), rustc >= 1.65.0, xz
