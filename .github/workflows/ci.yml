@@ -30,8 +30,10 @@ jobs:
           sudo apt-get install -y libudunits2-dev libgdal-dev libgeos-dev libproj-dev
 
       - name: Install R package dependencies
-        run: |
-          Rscript -e "install.packages(c('Rcpp', 'sf', 'data.table', 'testthat', 'rcmdcheck'), repos = 'https://cloud.r-project.org/')"
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
 
       - name: Configure backend build mode
         run: |
