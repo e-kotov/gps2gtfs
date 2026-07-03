@@ -174,7 +174,8 @@ resolve_stop_directions <- function(
 #' @param extended_buffer_radius Numeric. Extended stop buffer radius (in meters).
 #' @param projected_crs Numeric. The EPSG code of a projected coordinate system to use (default: 5234).
 #' @param backend Character. The backend to use: \code{"rcpp"}, \code{"pure_r"}, or \code{"rust"}. Default is \code{"rust"}.
-#' @return A data.table with stop arrival/departure times and dwell times.
+#' @return A data.table with stop arrival/departure times, dwell times, ordered
+#'   factor day_of_week, and logical is_weekday.
 #' @importFrom data.table as.data.table setkeyv rleid
 #' @noRd
 extract_stops_r <- function(
@@ -471,9 +472,10 @@ extract_stops_r <- function(
   ]
 
   # Add derived features
-  stop_times_dt[, day_of_week := (as.POSIXlt(as.Date(date))$wday + 6) %% 7]
+  weekday_features <- make_weekday_features(stop_times_dt$date)
+  stop_times_dt[, day_of_week := weekday_features$day_of_week]
   stop_times_dt[, hour_of_day := as.integer(substr(arrival_time, 1, 2))]
-  stop_times_dt[, is_weekday := ifelse(day_of_week < 5, 1, 0)]
+  stop_times_dt[, is_weekday := weekday_features$is_weekday]
 
   # Clean columns
   stop_times_dt[, grouped_ends := NULL]

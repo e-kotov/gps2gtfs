@@ -61,6 +61,29 @@ validate_identifiers <- function(x, name) {
   }
 }
 
+weekday_levels <- c(
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday"
+)
+
+make_weekday_features <- function(date) {
+  weekday_index <- as.integer((as.POSIXlt(as.Date(date))$wday + 6L) %% 7L)
+  list(
+    day_of_week = factor(
+      weekday_index,
+      levels = 0:6,
+      labels = weekday_levels,
+      ordered = TRUE
+    ),
+    is_weekday = weekday_index < 5L
+  )
+}
+
 empty_trip_features <- function(deviceid = character()) {
   data.table::data.table(
     trip_id = integer(),
@@ -72,8 +95,13 @@ empty_trip_features <- function(deviceid = character()) {
     start_time = character(),
     end_time = character(),
     duration_in_mins = double(),
-    day_of_week = integer(),
-    hour_of_day = integer()
+    day_of_week = factor(
+      levels = 0:6,
+      labels = weekday_levels,
+      ordered = TRUE
+    ),
+    hour_of_day = integer(),
+    is_weekday = logical()
   )
 }
 
@@ -87,9 +115,13 @@ empty_stop_times <- function(deviceid = character()) {
     arrival_time = character(),
     departure_time = character(),
     dwell_time_in_seconds = double(),
-    day_of_week = integer(),
+    day_of_week = factor(
+      levels = 0:6,
+      labels = weekday_levels,
+      ordered = TRUE
+    ),
     hour_of_day = integer(),
-    is_weekday = integer()
+    is_weekday = logical()
   )
 }
 

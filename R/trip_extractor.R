@@ -245,7 +245,8 @@ extract_trips_r <- function(
 #' Computes trip features such as duration, start/end times, direction, and day of week.
 #'
 #' @param trips_dt A data.table returned by \code{extract_trips_r}.
-#' @return A data.table containing one row per trip with calculated features.
+#' @return A data.table containing one row per trip with calculated features,
+#'   including ordered factor day_of_week and logical is_weekday.
 #' @importFrom data.table data.table setkeyv
 #' @noRd
 extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
@@ -301,11 +302,12 @@ extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
     ))
   ]
 
-  # Day of week (0 = Monday, ..., 6 = Sunday)
-  trip_features_dt[, day_of_week := (as.POSIXlt(as.Date(date))$wday + 6) %% 7]
+  weekday_features <- make_weekday_features(trip_features_dt$date)
+  trip_features_dt[, day_of_week := weekday_features$day_of_week]
 
   # Hour of day
   trip_features_dt[, hour_of_day := as.integer(format(starts$devicetime, "%H"))]
+  trip_features_dt[, is_weekday := weekday_features$is_weekday]
 
   return(trip_features_dt)
 }
