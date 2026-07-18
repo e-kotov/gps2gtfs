@@ -197,7 +197,11 @@ g2g_extract_trips <- function(
 #'   of inferred from terminal-buffer crossings; the first/last ping of each
 #'   segment is matched to the nearest terminal for direction assignment.
 #'   Default \code{NULL} (spatial inference).
-#' @return A list containing two data.tables: \code{trips} and \code{stop_times} (with columns matching GTFS standard naming).
+#' @param return_trajectory Logical. Also return the ping-level trajectory
+#'   (cleaned GPS records with assigned \code{trip_id} and \code{direction})
+#'   as a \code{trajectory} element — the input for
+#'   \code{\link{g2g_shapes_from_trips}}. Default \code{FALSE}.
+#' @return A list containing two data.tables: \code{trips} and \code{stop_times} (with columns matching GTFS standard naming), plus \code{trajectory} when \code{return_trajectory = TRUE}.
 #' @examples
 #' \donttest{
 #' data(g2g_data_gps)
@@ -232,7 +236,8 @@ g2g_extract_trips_and_stop_times <- function(
   stop_direction_map = NULL,
   vehicle_col = "vehicle_id",
   time_col = "timestamp",
-  trip_col = NULL
+  trip_col = NULL,
+  return_trajectory = FALSE
 ) {
   backend <- resolve_backend(backend)
   validate_positive_radius(terminals_buffer_radius, "terminals_buffer_radius")
@@ -293,6 +298,9 @@ g2g_extract_trips_and_stop_times <- function(
       trips = set_backend(empty_trip_features(cleaned$vehicle_id), backend),
       stop_times = empty_stop_times(cleaned$vehicle_id)
     )
+    if (isTRUE(return_trajectory)) {
+      result$trajectory <- empty_trajectory(cleaned)
+    }
     return(set_backend(result, backend))
   }
 
@@ -375,5 +383,9 @@ g2g_extract_trips_and_stop_times <- function(
     message("Pipeline finished successfully!")
   }
 
-  set_backend(list(trips = trip_features, stop_times = stop_times), backend)
+  result <- list(trips = trip_features, stop_times = stop_times)
+  if (isTRUE(return_trajectory)) {
+    result$trajectory <- trajectory
+  }
+  set_backend(result, backend)
 }

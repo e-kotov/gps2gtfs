@@ -14,6 +14,18 @@
   identities (fast path) instead of inferred from terminal-buffer crossings.
 * `direction` in trip features is now consistently integer.
 
+## New features (baseline-free mode)
+
+* New `g2g_stops_from_positions()` estimates stop coordinates from
+  `stop_id`-annotated Vehicle Positions (median position of `STOPPED_AT`
+  pings) — fills the spec-required `stop_lat`/`stop_lon` when no static feed
+  exists.
+* New `g2g_shapes_from_trips()` converts the ping-level trajectory of
+  extracted trips into a `shapes.txt`-shaped table (one shape per trip,
+  cumulative `shape_dist_traveled`) recording the geometry actually driven.
+  Obtain the trajectory with the new
+  `g2g_extract_trips_and_stop_times(..., return_trajectory = TRUE)`.
+
 ## Breaking changes
 
 * Canonical input and output column names now follow the GTFS-Realtime
