@@ -1,5 +1,19 @@
 # gps2gtfs 0.2.0
 
+## New features (baseline static GTFS + GTFS-RT trip identities)
+
+* New `g2g_terminals_from_gtfs()` and `g2g_stops_from_gtfs()` derive the
+  pipeline's `terminals_data` and `stops_data` inputs from a planned (baseline)
+  static GTFS feed — a gtfsio/gtfstools-style object or a zip path (via the
+  optional 'gtfsio' package) — instead of hand-built tables. Stop direction
+  labels are the starting terminal ids, which the pipeline now maps onto
+  terminals directly (identity mapping) without a manual `stop_direction_map`.
+* New `trip_col` argument in `g2g_extract_trips()` and
+  `g2g_extract_trips_and_stop_times()`: when positions already carry trip
+  identities (e.g. GTFS-Realtime `trip_id`), trips are segmented by those
+  identities (fast path) instead of inferred from terminal-buffer crossings.
+* `direction` in trip features is now consistently integer.
+
 ## Breaking changes
 
 * Canonical input and output column names now follow the GTFS-Realtime

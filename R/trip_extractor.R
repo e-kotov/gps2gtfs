@@ -29,6 +29,149 @@ assign_trip_ids_pure_r <- function(bus_stops, dates, device_ids) {
   return(trip_ids)
 }
 
+#' Haversine Distance in Meters (Vectorized, Pure R)
+#'
+#' @noRd
+haversine_m_r <- function(lat1, lon1, lat2, lon2) {
+  rad <- pi / 180
+  dlat <- (lat2 - lat1) * rad
+  dlon <- (lon2 - lon1) * rad
+  a <- sin(dlat / 2)^2 +
+    cos(lat1 * rad) * cos(lat2 * rad) * sin(dlon / 2)^2
+  6371000 * 2 * asin(pmin(1, sqrt(a)))
+}
+
+#' Nearest Terminal ID for Each Point
+#'
+#' @noRd
+nearest_terminal_id <- function(lat, lon, terminals, projected) {
+  ids <- as.character(terminals$terminal_id)
+  dmat <- vapply(
+    seq_along(ids),
+    function(j) {
+      if (projected) {
+        sqrt(
+          (lat - as.double(terminals$latitude[j]))^2 +
+            (lon - as.double(terminals$longitude[j]))^2
+        )
+      } else {
+        haversine_m_r(
+          lat,
+          lon,
+          as.double(terminals$latitude[j]),
+          as.double(terminals$longitude[j])
+        )
+      }
+    },
+    numeric(length(lat))
+  )
+  dmat <- matrix(dmat, nrow = length(lat))
+  ids[max.col(-dmat, ties.method = "first")]
+}
+
+#' Extract Trips from Supplied Trip Identities (Fast Path)
+#'
+#' When the GPS data already carries trip identities (e.g. GTFS-Realtime
+#' Vehicle Positions with a \code{trip_id} annotation), segmentation by those
+#' identities replaces terminal-buffer detection. Each contiguous run of the
+#' same trip value per vehicle and date becomes one trip; its first and last
+#' pings are treated as terminal entry/exit and matched to the nearest
+#' terminal so that direction semantics stay identical to the spatial path.
+#'
+#' @param cleaned_gps_dt A data.table of cleaned GPS data.
+#' @param trip_terminals_df Terminal coordinates with \code{terminal_id}.
+#' @param trip_col Name of the column holding the supplied trip identities.
+#' @return A data.table shaped like the output of \code{extract_trips_r}:
+#'   two rows (entry/exit) per trip with \code{bus_stop} and integer
+#'   \code{trip_id}.
+#' @noRd
+extract_trips_from_ids_r <- function(
+  cleaned_gps_dt,
+  trip_terminals_df,
+  trip_col,
+  projected = NULL
+) {
+  if (!trip_col %in% names(cleaned_gps_dt)) {
+    stop(
+      "'trip_col' column '",
+      trip_col,
+      "' not found in the GPS data.",
+      call. = FALSE
+    )
+  }
+  if (is.null(projected)) {
+    projected <- attr(cleaned_gps_dt, "projected")
+    if (is.null(projected)) {
+      projected <- FALSE
+    }
+  }
+
+  norm_terminals <- normalize_coordinates(
+    trip_terminals_df,
+    projected = projected,
+    name = "trip_terminals_df"
+  )
+  terminals <- norm_terminals$dt
+  validate_required_columns(terminals, "terminal_id", "trip_terminals_df")
+  validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
+
+  empty_result <- function() {
+    result <- data.table::copy(cleaned_gps_dt[0])
+    result[, bus_stop := character()]
+    result[, trip_id := integer()]
+    result
+  }
+  if (nrow(cleaned_gps_dt) == 0L || nrow(terminals) == 0L) {
+    return(empty_result())
+  }
+
+  dt <- data.table::copy(cleaned_gps_dt)
+  dt[, rt_trip_value := as.character(dt[[trip_col]])]
+  seg_dt <- dt[!is.na(rt_trip_value) & nzchar(trimws(rt_trip_value))]
+  if (nrow(seg_dt) == 0L) {
+    message(
+      "[INFO] Column '",
+      trip_col,
+      "' contains no usable trip identities; no trips extracted."
+    )
+    return(empty_result())
+  }
+
+  data.table::setkeyv(seg_dt, c("vehicle_id", "date", "time_str"))
+  seg_dt[, trip_id := data.table::rleid(vehicle_id, date, rt_trip_value)]
+  seg_dt[, seg_n := .N, by = trip_id]
+
+  n_single <- seg_dt[seg_n < 2L, data.table::uniqueN(trip_id)]
+  if (n_single > 0L) {
+    message(
+      "[INFO] Skipped ",
+      n_single,
+      " single-ping trip segment(s) from '",
+      trip_col,
+      "'."
+    )
+  }
+  seg_dt <- seg_dt[seg_n >= 2L]
+  if (nrow(seg_dt) == 0L) {
+    return(empty_result())
+  }
+
+  # Renumber to consecutive integers, then keep first/last ping per trip
+  seg_dt[, trip_id := data.table::rleid(trip_id)]
+  bounds <- seg_dt[, .SD[c(1L, .N)], by = trip_id]
+
+  bounds[,
+    bus_stop := nearest_terminal_id(
+      as.double(latitude),
+      as.double(longitude),
+      terminals,
+      projected
+    )
+  ]
+  bounds[, c("rt_trip_value", "seg_n") := NULL]
+  bounds[]
+}
+
 #' Extract Trips from Cleaned GPS Data
 #'
 #' Converts GPS data and terminal coordinates to spatial objects, performs a spatial join
@@ -274,10 +417,10 @@ extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
   }
   direction_vec <- ifelse(
     starts$bus_stop == terminals[1],
-    1,
+    1L,
     ifelse(
       length(terminals) > 1 & starts$bus_stop == terminals[2],
-      2,
+      2L,
       NA_integer_
     )
   )

@@ -54,7 +54,14 @@ prepare_trajectory_r <- function(
     return(empty_trajectory(cleaned_gps_dt))
   }
 
-  # Merge trip_id from trips_dt into cleaned_gps_dt
+  # Merge trip_id from trips_dt into cleaned_gps_dt. A passthrough column
+  # named trip_id (e.g. the GTFS-RT annotation) would collide with the
+  # pipeline's internal trip numbering; drop it here — it has already been
+  # consumed by segmentation at this point.
+  if ("trip_id" %in% names(cleaned_gps_dt)) {
+    cleaned_gps_dt <- data.table::copy(cleaned_gps_dt)
+    cleaned_gps_dt[, trip_id := NULL]
+  }
   merged_dt <- merge(
     cleaned_gps_dt,
     trips_dt[, .(id, trip_id)],
@@ -115,7 +122,13 @@ resolve_stop_directions <- function(
         call. = FALSE
       )
     }
-    stop_direction_map <- stats::setNames(terminal_ids, labels)
+    if (setequal(labels, terminal_ids)) {
+      # Labels are terminal ids themselves (e.g. from g2g_stops_from_gtfs());
+      # map each onto itself instead of pairing by order of appearance.
+      stop_direction_map <- stats::setNames(labels, labels)
+    } else {
+      stop_direction_map <- stats::setNames(terminal_ids, labels)
+    }
   } else {
     if (
       !is.character(stop_direction_map) ||
