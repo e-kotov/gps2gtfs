@@ -23,8 +23,11 @@ Imports:
 Suggests:
     gtfsio,
     gtfsrealtime,
+    knitr,
+    rmarkdown,
     sf,
     testthat (>= 3.0.0)
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 LinkingTo:
     Rcpp

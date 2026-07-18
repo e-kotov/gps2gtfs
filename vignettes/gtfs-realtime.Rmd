@@ -1,0 +1,154 @@
+---
+title: "GTFS-Realtime Vehicle Positions to GTFS, natively"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{GTFS-Realtime Vehicle Positions to GTFS, natively}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+has_gtfsrealtime <- requireNamespace("gtfsrealtime", quietly = TRUE)
+```
+
+GTFS-Realtime Vehicle Positions are raw GPS pings with transit annotations —
+exactly the data `gps2gtfs` converts into GTFS-shaped `trips` and
+`stop_times` tables. Since version 0.2.0, the package's canonical column
+names follow the GTFS-Realtime convention (`vehicle_id`, `latitude`,
+`longitude`, `timestamp`, `speed`), so the output of
+`gtfsrealtime::read_gtfsrt_positions()` feeds the pipeline **directly, with
+no adapter**.
+
+```{r setup}
+library(gps2gtfs)
+library(data.table)
+```
+
+## Reading an archived feed
+
+The [gtfsrealtime](https://cran.r-project.org/package=gtfsrealtime) package
+parses GTFS-RT protobuf files — single snapshots, gzip/bzip2 files, or a
+daily ZIP of archived polls — into a plain data frame:
+
+```{r read-feed, eval = has_gtfsrealtime}
+positions <- gtfsrealtime::read_gtfsrt_positions(
+  system.file("nyc-vehicle-positions.pb.bz2", package = "gtfsrealtime"),
+  timezone = "America/New_York"
+)
+names(positions)
+```
+
+Every column of that data frame is either consumed by `gps2gtfs`
+(`vehicle_id`, `latitude`, `longitude`, `timestamp`, `speed`) or passed
+through untouched (`trip_id`, `route_id`, `stop_id`, `current_status`,
+`bearing`, ...). Pass the timezone the agency operates in: `g2g_clean_gps()`
+preserves it, so service days split at local midnight.
+
+## A worked example
+
+A single feed snapshot contains one ping per vehicle — a trajectory needs an
+*archive* of polls. For a reproducible example we simulate what a day-long
+archive of one bus on a two-terminal route looks like after parsing: two
+runs (A → B, then B → A) with GTFS-RT `trip_id` annotations, plus one
+unannotated layover ping.
+
+```{r synthetic}
+lat <- seq(7.290, 7.320, length.out = 4)
+lon <- seq(80.630, 80.660, length.out = 4)
+base <- as.POSIXct("2026-06-06 08:00:00", tz = "UTC")
+
+positions <- data.frame(
+  vehicle_id = "7482",
+  latitude = c(lat, 7.321, rev(lat)),
+  longitude = c(lon, 80.661, rev(lon)),
+  timestamp = base + c(0, 300, 600, 900, 1200, 1800, 2100, 2400, 2700),
+  speed = c(0, 20, 20, 0, 0, 0, 20, 20, 0),
+  trip_id = c(rep("CS_1", 4), NA, rep("CS_2", 4))
+)
+```
+
+## Terminals and stops from a baseline feed
+
+The pipeline needs terminal and stop locations. With a planned (baseline)
+static GTFS feed for the same system — a gtfsio/gtfstools-style object or a
+path to a GTFS zip — both are derived automatically:
+
+```{r baseline}
+baseline <- list(
+  trips = data.frame(
+    trip_id = c("CS_1", "CS_2"),
+    route_id = "R1",
+    service_id = "wk"
+  ),
+  stop_times = data.frame(
+    trip_id = rep(c("CS_1", "CS_2"), each = 4),
+    stop_id = c("A", "S1", "S2", "B", "B", "S2", "S1", "A"),
+    stop_sequence = rep(1:4, 2)
+  ),
+  stops = data.frame(
+    stop_id = c("A", "S1", "S2", "B"),
+    stop_name = c("Terminal A", "Stop 1", "Stop 2", "Terminal B"),
+    stop_lat = lat,
+    stop_lon = lon
+  )
+)
+
+terminals <- g2g_terminals_from_gtfs(baseline, route_id = "R1")
+stops <- g2g_stops_from_gtfs(baseline, route_id = "R1")
+terminals
+stops
+```
+
+Without a baseline, supply the two tables by hand, or — when positions carry
+`stop_id` annotations — estimate stop coordinates from the pings themselves
+with `g2g_stops_from_positions()`.
+
+## Extracting trips and stop times
+
+Because the positions carry `trip_id` annotations, we can skip spatial trip
+inference entirely (`trip_col = "trip_id"`, the *fast path*). Without the
+annotation, drop that argument and trips are inferred from terminal-buffer
+crossings instead — same output either way.
+
+```{r pipeline}
+result <- g2g_extract_trips_and_stop_times(
+  gps_data = positions,
+  terminals_data = terminals,
+  stops_data = stops,
+  terminals_buffer_radius = 100,
+  stops_buffer_radius = 100,
+  stops_extended_buffer_radius = 150,
+  trip_col = "trip_id",
+  return_trajectory = TRUE
+)
+
+result$trips
+result$stop_times
+```
+
+## Shapes: the geometry actually driven
+
+`return_trajectory = TRUE` exposes the ping-level trajectory, which converts
+into a `shapes.txt`-shaped table — unlike planned shapes, these traces record
+what the vehicle actually drove, including detours:
+
+```{r shapes}
+shapes <- g2g_shapes_from_trips(result$trajectory)
+head(shapes)
+```
+
+## Notes for real archives
+
+* `g2g_clean_gps()` (called internally by the pipeline) deduplicates repeated
+  `(vehicle_id, timestamp)` observations — archived feeds re-report unchanged
+  positions every poll — and drops pings with missing `vehicle_id` with a
+  warning.
+* GTFS-RT reports `speed` in meters per second; only `speed == 0` is used
+  (dwell-time detection). A missing speed column degrades dwell estimates
+  and triggers a warning.
+* Data in any other column naming (AVL exports, logger CSVs) is mapped with
+  `vehicle_col =` / `time_col =` — no pre-processing step needed.
