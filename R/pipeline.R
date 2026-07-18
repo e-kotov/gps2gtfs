@@ -35,6 +35,10 @@ is_rust_available <- function() {
 #'   Rcpp, then pure R. Explicit unavailable backends produce an error.
 #' @param projected Logical. Whether plain-table coordinates are already
 #'   projected. Out-of-bounds coordinates require explicit \code{TRUE}.
+#' @param vehicle_col Character. Name of the vehicle identifier column in
+#'   \code{gps_data}. Default \code{"vehicle_id"} (GTFS-Realtime convention).
+#' @param time_col Character. Name of the timestamp column in \code{gps_data}.
+#'   Default \code{"timestamp"} (GTFS-Realtime convention).
 #' @return A data.table containing extracted trip features.
 #' @examples
 #' \donttest{
@@ -56,7 +60,9 @@ g2g_extract_trips <- function(
   output_path = NULL,
   projected_crs = NULL,
   backend = "auto",
-  projected = NULL
+  projected = NULL,
+  vehicle_col = "vehicle_id",
+  time_col = "timestamp"
 ) {
   backend <- resolve_backend(backend)
   validate_positive_radius(terminals_buffer_radius, "terminals_buffer_radius")
@@ -68,7 +74,12 @@ g2g_extract_trips <- function(
 
   raw_gps_df <- if (is.character(gps_data) && length(gps_data) == 1L) data.table::fread(gps_data) else data.table::as.data.table(gps_data)
   trip_terminals_df <- if (is.character(terminals_data) && length(terminals_data) == 1L) data.table::fread(terminals_data) else data.table::as.data.table(terminals_data)
-  cleaned <- g2g_clean_gps(raw_gps_df, projected = projected)
+  cleaned <- g2g_clean_gps(
+    raw_gps_df,
+    projected = projected,
+    vehicle_col = vehicle_col,
+    time_col = time_col
+  )
   projected <- attr(cleaned, "projected")
   if (projected && is.null(projected_crs)) {
     stop(
@@ -86,7 +97,7 @@ g2g_extract_trips <- function(
   validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
 
   if (nrow(cleaned) == 0L) {
-    result <- set_backend(empty_trip_features(cleaned$deviceid), backend)
+    result <- set_backend(empty_trip_features(cleaned$vehicle_id), backend)
     if (!is.null(output_path)) {
       data.table::fwrite(result, output_path)
     }
@@ -155,6 +166,10 @@ g2g_extract_trips <- function(
 #'   projected. Out-of-bounds coordinates require explicit \code{TRUE}.
 #' @param stop_direction_map Optional named character vector mapping each raw
 #'   stop-direction label to its starting terminal ID.
+#' @param vehicle_col Character. Name of the vehicle identifier column in
+#'   \code{gps_data}. Default \code{"vehicle_id"} (GTFS-Realtime convention).
+#' @param time_col Character. Name of the timestamp column in \code{gps_data}.
+#'   Default \code{"timestamp"} (GTFS-Realtime convention).
 #' @return A list containing two data.tables: \code{trips} and \code{stop_times} (with columns matching GTFS standard naming).
 #' @examples
 #' \donttest{
@@ -187,7 +202,9 @@ g2g_extract_trips_and_stop_times <- function(
   projected_crs = NULL,
   backend = "auto",
   projected = NULL,
-  stop_direction_map = NULL
+  stop_direction_map = NULL,
+  vehicle_col = "vehicle_id",
+  time_col = "timestamp"
 ) {
   backend <- resolve_backend(backend)
   validate_positive_radius(terminals_buffer_radius, "terminals_buffer_radius")
@@ -209,7 +226,12 @@ g2g_extract_trips_and_stop_times <- function(
   trip_terminals_df <- if (is.character(terminals_data) && length(terminals_data) == 1L) data.table::fread(terminals_data) else data.table::as.data.table(terminals_data)
   stops_df <- if (is.character(stops_data) && length(stops_data) == 1L) data.table::fread(stops_data) else data.table::as.data.table(stops_data)
 
-  cleaned <- g2g_clean_gps(raw_gps_df, projected = projected)
+  cleaned <- g2g_clean_gps(
+    raw_gps_df,
+    projected = projected,
+    vehicle_col = vehicle_col,
+    time_col = time_col
+  )
   projected <- attr(cleaned, "projected")
   if (projected && is.null(projected_crs)) {
     stop(
@@ -240,8 +262,8 @@ g2g_extract_trips_and_stop_times <- function(
 
   if (nrow(cleaned) == 0L) {
     result <- list(
-      trips = set_backend(empty_trip_features(cleaned$deviceid), backend),
-      stop_times = empty_stop_times(cleaned$deviceid)
+      trips = set_backend(empty_trip_features(cleaned$vehicle_id), backend),
+      stop_times = empty_stop_times(cleaned$vehicle_id)
     )
     return(set_backend(result, backend))
   }

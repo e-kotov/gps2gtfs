@@ -62,7 +62,7 @@ test_that("available backends produce equivalent trip identities and stop sequen
 
   reference_trips <- results[[1]]$trips[, .(
     trip_id,
-    deviceid,
+    vehicle_id,
     start_terminal,
     end_terminal,
     direction
@@ -72,7 +72,7 @@ test_that("available backends produce equivalent trip identities and stop sequen
     expect_equal(
       result$trips[, .(
         trip_id,
-        deviceid,
+        vehicle_id,
         start_terminal,
         end_terminal,
         direction
@@ -109,12 +109,12 @@ test_that("device pairing accepts character IDs and never crosses devices", {
 
 test_that("numeric device IDs retain their output type", {
   result <- run_fixture()
-  expect_type(result$trips$deviceid, "integer")
+  expect_type(result$trips$vehicle_id, "integer")
 })
 
 test_that("character device IDs remain distinct and retain their output type", {
   gps <- data.table::copy(g2g_data_gps)
-  gps[, deviceid := paste0("bus-", deviceid)]
+  gps[, vehicle_id := paste0("bus-", vehicle_id)]
 
   backends <- c(
     if (is_rust_available()) "rust",
@@ -128,18 +128,18 @@ test_that("character device IDs remain distinct and retain their output type", {
       terminals_buffer_radius = 100,
       backend = backend
     )
-    expect_type(result$deviceid, "character")
-    expect_setequal(unique(result$deviceid), unique(gps$deviceid))
+    expect_type(result$vehicle_id, "character")
+    expect_setequal(unique(result$vehicle_id), unique(gps$vehicle_id))
   }
 })
 
 test_that("coordinate validation is strict and projected integers work", {
   valid <- data.frame(
     id = 1L,
-    deviceid = "bus-a",
+    vehicle_id = "bus-a",
     latitude = 6.9,
     longitude = 79.9,
-    devicetime = "2026-06-06 08:00:00",
+    timestamp = "2026-06-06 08:00:00",
     speed = 0
   )
   invalid <- valid
@@ -158,10 +158,10 @@ test_that("coordinate validation is strict and projected integers work", {
 
   projected_gps <- data.frame(
     id = 1:2,
-    deviceid = c("bus-a", "bus-a"),
+    vehicle_id = c("bus-a", "bus-a"),
     latitude = c(1000010L, 1000210L),
     longitude = c(500000L, 500000L),
-    devicetime = c("2026-06-06 08:00:00", "2026-06-06 08:05:00"),
+    timestamp = c("2026-06-06 08:00:00", "2026-06-06 08:05:00"),
     speed = c(0, 0)
   )
   terminals <- data.frame(
@@ -229,10 +229,10 @@ test_that("empty inputs and no matches return stable typed schemas", {
 
   cleaned <- g2g_clean_gps(data.frame(
     id = 1L,
-    deviceid = "bus-a",
+    vehicle_id = "bus-a",
     latitude = 6.9,
     longitude = 79.9,
-    devicetime = "2026-06-06 08:00:00",
+    timestamp = "2026-06-06 08:00:00",
     speed = 0
   ))
   far_terminals <- data.frame(

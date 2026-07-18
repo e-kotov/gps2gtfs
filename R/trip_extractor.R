@@ -179,16 +179,16 @@ extract_trips_r <- function(
 
   # Group contiguous terminal records for the same device, terminal, and date
   terminal_gps_dt[,
-    grouped_terminals := data.table::rleid(deviceid, bus_stop, date)
+    grouped_terminals := data.table::rleid(vehicle_id, bus_stop, date)
   ]
 
   # Find indices of min (entry) and max (exit) times in each group
   min_indices <- terminal_gps_dt[,
-    .I[which.min(devicetime)],
+    .I[which.min(timestamp)],
     by = grouped_terminals
   ]$V1
   max_indices <- terminal_gps_dt[,
-    .I[which.max(devicetime)],
+    .I[which.max(timestamp)],
     by = grouped_terminals
   ]$V1
 
@@ -203,10 +203,10 @@ extract_trips_r <- function(
   # Sort before pairing
   data.table::setkeyv(
     trip_terminals_gps_dt,
-    c("deviceid", "date", "devicetime")
+    c("vehicle_id", "date", "timestamp")
   )
 
-  device_keys <- as.character(trip_terminals_gps_dt$deviceid)
+  device_keys <- as.character(trip_terminals_gps_dt$vehicle_id)
   # Assign trip IDs depending on backend
   if (backend == "rcpp") {
     trip_terminals_gps_dt[,
@@ -251,11 +251,11 @@ extract_trips_r <- function(
 #' @noRd
 extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
   if (nrow(trips_dt) == 0L) {
-    return(empty_trip_features(trips_dt$deviceid))
+    return(empty_trip_features(trips_dt$vehicle_id))
   }
 
   # Sort to ensure start and end are sequential
-  data.table::setkeyv(trips_dt, c("trip_id", "devicetime"))
+  data.table::setkeyv(trips_dt, c("trip_id", "timestamp"))
 
   starts <- trips_dt[seq(1, .N, by = 2)]
   ends <- trips_dt[seq(2, .N, by = 2)]
@@ -284,7 +284,7 @@ extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
 
   trip_features_dt <- data.table::data.table(
     trip_id = starts$trip_id,
-    deviceid = starts$deviceid,
+    vehicle_id = starts$vehicle_id,
     date = starts$date,
     start_terminal = starts$bus_stop,
     end_terminal = ends$bus_stop,
@@ -296,8 +296,8 @@ extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
   # Duration in minutes
   trip_features_dt[,
     duration_in_mins := as.numeric(difftime(
-      ends$devicetime,
-      starts$devicetime,
+      ends$timestamp,
+      starts$timestamp,
       units = "mins"
     ))
   ]
@@ -306,7 +306,7 @@ extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
   trip_features_dt[, day_of_week := weekday_features$day_of_week]
 
   # Hour of day
-  trip_features_dt[, hour_of_day := as.integer(format(starts$devicetime, "%H"))]
+  trip_features_dt[, hour_of_day := as.integer(format(starts$timestamp, "%H"))]
   trip_features_dt[, is_weekday := weekday_features$is_weekday]
 
   return(trip_features_dt)

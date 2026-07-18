@@ -64,7 +64,7 @@ prepare_trajectory_r <- function(
   merged_dt[is.na(trip_id), trip_id := 0L]
 
   # Sort before propagation
-  data.table::setkeyv(merged_dt, c("deviceid", "date", "devicetime"))
+  data.table::setkeyv(merged_dt, c("vehicle_id", "date", "timestamp"))
 
   # Propagate trip IDs depending on backend
   if (backend == "rcpp") {
@@ -229,7 +229,7 @@ extract_stops_r <- function(
   }
   if (nrow(stops_df) == 0L) {
     validate_required_columns(stops_df, c("stop_id", "direction"), "stops_df")
-    return(empty_stop_times(trajectory_dt$deviceid))
+    return(empty_stop_times(trajectory_dt$vehicle_id))
   }
   stops_df[["internal_direction"]] <- resolve_stop_directions(
     stops_df,
@@ -238,7 +238,7 @@ extract_stops_r <- function(
   )
 
   if (nrow(trajectory_dt) == 0L) {
-    return(empty_stop_times(trajectory_dt$deviceid))
+    return(empty_stop_times(trajectory_dt$vehicle_id))
   }
 
   if (backend == "rcpp" || backend == "rust") {
@@ -417,18 +417,18 @@ extract_stops_r <- function(
   }
 
   # Sort to ensure chronological order per trip/device stop visits
-  data.table::setkeyv(stops_dt, c("deviceid", "trip_id", "devicetime"))
+  data.table::setkeyv(stops_dt, c("vehicle_id", "trip_id", "timestamp"))
 
   # Drop terminal points
   terminals_to_drop <- unique(trip_terminals_df$terminal_id)
   stops_dt <- stops_dt[!(bus_stop %in% terminals_to_drop)]
 
   if (nrow(stops_dt) == 0) {
-    return(empty_stop_times(trajectory_dt$deviceid))
+    return(empty_stop_times(trajectory_dt$vehicle_id))
   }
 
   # Group contiguous stop visits by device, trip, and stop
-  stops_dt[, grouped_ends := data.table::rleid(deviceid, trip_id, bus_stop)]
+  stops_dt[, grouped_ends := data.table::rleid(vehicle_id, trip_id, bus_stop)]
 
   # Estimate arrival, departure, and dwell times
   stop_times_dt <- stops_dt[,
@@ -436,9 +436,9 @@ extract_stops_r <- function(
       zero_idx <- which(speed == 0)
 
       if (length(zero_idx) > 0) {
-        arr_time <- min(devicetime[zero_idx])
-        buf_leave_time <- max(devicetime)
-        rough_dep_time <- max(devicetime[zero_idx])
+        arr_time <- min(timestamp[zero_idx])
+        buf_leave_time <- max(timestamp)
+        rough_dep_time <- max(timestamp[zero_idx])
 
         if (
           as.numeric(difftime(buf_leave_time, rough_dep_time, units = "secs")) >
@@ -449,13 +449,13 @@ extract_stops_r <- function(
           dep_time <- buf_leave_time
         }
       } else {
-        arr_time <- min(devicetime)
+        arr_time <- min(timestamp)
         dep_time <- arr_time
       }
 
       .(
         trip_id = trip_id[1],
-        deviceid = deviceid[1],
+        vehicle_id = vehicle_id[1],
         date = date[1],
         direction = direction[1],
         bus_stop = bus_stop[1],

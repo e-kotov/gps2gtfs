@@ -84,10 +84,10 @@ make_weekday_features <- function(date) {
   )
 }
 
-empty_trip_features <- function(deviceid = character()) {
+empty_trip_features <- function(vehicle_id = character()) {
   data.table::data.table(
     trip_id = integer(),
-    deviceid = deviceid[0],
+    vehicle_id = vehicle_id[0],
     date = character(),
     start_terminal = character(),
     end_terminal = character(),
@@ -105,10 +105,10 @@ empty_trip_features <- function(deviceid = character()) {
   )
 }
 
-empty_stop_times <- function(deviceid = character()) {
+empty_stop_times <- function(vehicle_id = character()) {
   data.table::data.table(
     trip_id = integer(),
-    deviceid = deviceid[0],
+    vehicle_id = vehicle_id[0],
     date = character(),
     direction = integer(),
     stop_id = character(),

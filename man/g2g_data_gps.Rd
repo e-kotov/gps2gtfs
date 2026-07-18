@@ -5,11 +5,12 @@
 \alias{g2g_data_gps}
 \title{GPS Trajectory Subset}
 \format{
-A data frame with 1045 rows and 6 variables:
+A data frame with 2167 rows and 6 variables:
 \describe{
   \item{id}{Unique identifier for the GPS record.}
-  \item{deviceid}{Unique identifier for the tracking device (bus).}
-  \item{devicetime}{Timestamp of the GPS ping (UTC).}
+  \item{vehicle_id}{Unique identifier for the tracking vehicle (bus). Column
+    naming follows the GTFS-Realtime convention.}
+  \item{timestamp}{Timestamp of the GPS ping (UTC).}
   \item{latitude}{Latitude in WGS-84 degrees.}
   \item{longitude}{Longitude in WGS-84 degrees.}
   \item{speed}{Recorded speed of the vehicle.}

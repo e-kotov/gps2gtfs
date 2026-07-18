@@ -11,7 +11,9 @@ g2g_extract_trips(
   output_path = NULL,
   projected_crs = NULL,
   backend = "auto",
-  projected = NULL
+  projected = NULL,
+  vehicle_col = "vehicle_id",
+  time_col = "timestamp"
 )
 }
 \arguments{
@@ -34,6 +36,12 @@ Rcpp, then pure R. Explicit unavailable backends produce an error.}
 
 \item{projected}{Logical. Whether plain-table coordinates are already
 projected. Out-of-bounds coordinates require explicit \code{TRUE}.}
+
+\item{vehicle_col}{Character. Name of the vehicle identifier column in
+\code{gps_data}. Default \code{"vehicle_id"} (GTFS-Realtime convention).}
+
+\item{time_col}{Character. Name of the timestamp column in \code{gps_data}.
+Default \code{"timestamp"} (GTFS-Realtime convention).}
 }
 \value{
 A data.table containing extracted trip features.

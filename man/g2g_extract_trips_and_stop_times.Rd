@@ -16,7 +16,9 @@ g2g_extract_trips_and_stop_times(
   projected_crs = NULL,
   backend = "auto",
   projected = NULL,
-  stop_direction_map = NULL
+  stop_direction_map = NULL,
+  vehicle_col = "vehicle_id",
+  time_col = "timestamp"
 )
 }
 \arguments{
@@ -50,6 +52,12 @@ projected. Out-of-bounds coordinates require explicit \code{TRUE}.}
 
 \item{stop_direction_map}{Optional named character vector mapping each raw
 stop-direction label to its starting terminal ID.}
+
+\item{vehicle_col}{Character. Name of the vehicle identifier column in
+\code{gps_data}. Default \code{"vehicle_id"} (GTFS-Realtime convention).}
+
+\item{time_col}{Character. Name of the timestamp column in \code{gps_data}.
+Default \code{"timestamp"} (GTFS-Realtime convention).}
 }
 \value{
 A list containing two data.tables: \code{trips} and \code{stop_times} (with columns matching GTFS standard naming).

@@ -4,20 +4,60 @@
 \alias{g2g_clean_gps}
 \title{Clean Raw GPS Data}
 \usage{
-g2g_clean_gps(raw_gps_df, projected = NULL)
+g2g_clean_gps(
+  raw_gps_df,
+  projected = NULL,
+  vehicle_col = "vehicle_id",
+  time_col = "timestamp",
+  dedupe = TRUE,
+  drop_missing_vehicle = TRUE
+)
 }
 \arguments{
-\item{raw_gps_df}{A data.frame containing raw GPS data. Must include columns:
-\code{id}, \code{deviceid}, \code{latitude}, \code{longitude}, \code{devicetime}, and \code{speed}.}
+\item{raw_gps_df}{A data.frame containing raw GPS data. Must include
+\code{latitude} and \code{longitude} (WGS-84 degrees unless
+\code{projected = TRUE}), a vehicle identifier column, and a timestamp
+column. A \code{speed} column is recommended (used for dwell-time
+estimation); GTFS-Realtime reports it in meters per second, but only
+\code{speed == 0} is interpreted. An \code{id} row identifier is generated
+when absent or not unique.}
 
 \item{projected}{Logical. Is the coordinates data already projected? Default is NULL (auto-detect).}
+
+\item{vehicle_col}{Character. Name of the column holding the vehicle
+identifier. Default \code{"vehicle_id"} (GTFS-Realtime convention).}
+
+\item{time_col}{Character. Name of the column holding the observation time.
+Default \code{"timestamp"} (GTFS-Realtime convention). \code{POSIXct}
+input keeps its timezone (service days split at feed-local midnight);
+character input is parsed as UTC.}
+
+\item{dedupe}{Logical. Drop repeated \code{(vehicle_id, timestamp)} rows,
+as produced by archived GTFS-Realtime feeds that re-report unchanged
+positions. Default \code{TRUE}.}
+
+\item{drop_missing_vehicle}{Logical. Drop rows with missing/empty vehicle
+identifiers with a warning (\code{TRUE}, default) instead of failing.}
 }
 \value{
-A sorted \code{data.table} with additional \code{date} and \code{time_str} columns.
+A sorted \code{data.table} with canonical columns \code{id},
+  \code{vehicle_id}, \code{latitude}, \code{longitude}, \code{timestamp},
+  \code{speed}, additional \code{date} and \code{time_str} columns, and all
+  other input columns passed through.
 }
 \description{
-Cleans raw GPS data by removing records with latitude or longitude equal to zero,
-parsing the device time, and sorting by device ID, date, and time.
+Cleans raw GPS or GTFS-Realtime vehicle position data: maps input columns to
+the canonical schema, removes records with zero coordinates or missing
+vehicle identifiers, deduplicates repeated pings, parses timestamps, and
+sorts by vehicle, date, and time.
+}
+\details{
+The canonical column names follow the GTFS-Realtime convention, so the
+output of \code{gtfsrealtime::read_gtfsrt_positions()} is accepted directly.
+Any other source (AVL exports, logger CSVs) can be mapped via
+\code{vehicle_col} and \code{time_col}. Columns beyond the canonical set
+(e.g. \code{trip_id}, \code{route_id}, \code{stop_id}) are passed through
+untouched.
 }
 \examples{
 \donttest{
