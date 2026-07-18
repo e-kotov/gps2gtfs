@@ -11,10 +11,10 @@ test_that("weekday features are ISO compliant and Monday-first", {
 test_that("trip extraction uses weekday feature schema", {
   trips <- data.table::data.table(
     trip_id = c(1L, 1L, 2L, 2L),
-    deviceid = "bus-a",
+    vehicle_id = "bus-a",
     date = rep(c("2024-01-01", "2024-01-06"), each = 2),
     bus_stop = rep(c("A", "B"), 2),
-    devicetime = as.POSIXct(
+    timestamp = as.POSIXct(
       c(
         "2024-01-01 08:00:00",
         "2024-01-01 08:30:00",
@@ -24,7 +24,7 @@ test_that("trip extraction uses weekday feature schema", {
       tz = "UTC"
     )
   )
-  trips[, time_str := format(devicetime, "%H:%M:%S")]
+  trips[, time_str := format(timestamp, "%H:%M:%S")]
 
   features <- extract_trip_features_r(trips, terminal_ids = c("A", "B"))
 
