@@ -39,6 +39,12 @@ is_rust_available <- function() {
 #'   \code{gps_data}. Default \code{"vehicle_id"} (GTFS-Realtime convention).
 #' @param time_col Character. Name of the timestamp column in \code{gps_data}.
 #'   Default \code{"timestamp"} (GTFS-Realtime convention).
+#' @param trip_col Character. Optional name of a column holding supplied trip
+#'   identities (e.g. \code{"trip_id"} from GTFS-Realtime Vehicle Positions).
+#'   When given, trips are segmented by those identities (fast path) instead
+#'   of inferred from terminal-buffer crossings; the first/last ping of each
+#'   segment is matched to the nearest terminal for direction assignment.
+#'   Default \code{NULL} (spatial inference).
 #' @return A data.table containing extracted trip features.
 #' @examples
 #' \donttest{
@@ -62,7 +68,8 @@ g2g_extract_trips <- function(
   backend = "auto",
   projected = NULL,
   vehicle_col = "vehicle_id",
-  time_col = "timestamp"
+  time_col = "timestamp",
+  trip_col = NULL
 ) {
   backend <- resolve_backend(backend)
   validate_positive_radius(terminals_buffer_radius, "terminals_buffer_radius")
@@ -120,14 +127,28 @@ g2g_extract_trips <- function(
     )
   }
 
-  trips <- extract_trips_r(
-    cleaned,
-    terminals,
-    terminals_buffer_radius,
-    projected_crs = projected_crs,
-    backend = backend,
-    projected = projected
-  )
+  if (!is.null(trip_col)) {
+    message(
+      "[INFO] Using supplied trip identities from column '",
+      trip_col,
+      "' (fast path)."
+    )
+    trips <- extract_trips_from_ids_r(
+      cleaned,
+      terminals,
+      trip_col,
+      projected = projected
+    )
+  } else {
+    trips <- extract_trips_r(
+      cleaned,
+      terminals,
+      terminals_buffer_radius,
+      projected_crs = projected_crs,
+      backend = backend,
+      projected = projected
+    )
+  }
   trip_features <- extract_trip_features_r(
     trips,
     unique(as.character(terminals$terminal_id))
@@ -170,6 +191,12 @@ g2g_extract_trips <- function(
 #'   \code{gps_data}. Default \code{"vehicle_id"} (GTFS-Realtime convention).
 #' @param time_col Character. Name of the timestamp column in \code{gps_data}.
 #'   Default \code{"timestamp"} (GTFS-Realtime convention).
+#' @param trip_col Character. Optional name of a column holding supplied trip
+#'   identities (e.g. \code{"trip_id"} from GTFS-Realtime Vehicle Positions).
+#'   When given, trips are segmented by those identities (fast path) instead
+#'   of inferred from terminal-buffer crossings; the first/last ping of each
+#'   segment is matched to the nearest terminal for direction assignment.
+#'   Default \code{NULL} (spatial inference).
 #' @return A list containing two data.tables: \code{trips} and \code{stop_times} (with columns matching GTFS standard naming).
 #' @examples
 #' \donttest{
@@ -204,7 +231,8 @@ g2g_extract_trips_and_stop_times <- function(
   projected = NULL,
   stop_direction_map = NULL,
   vehicle_col = "vehicle_id",
-  time_col = "timestamp"
+  time_col = "timestamp",
+  trip_col = NULL
 ) {
   backend <- resolve_backend(backend)
   validate_positive_radius(terminals_buffer_radius, "terminals_buffer_radius")
@@ -284,14 +312,28 @@ g2g_extract_trips_and_stop_times <- function(
     )
   }
 
-  trips <- extract_trips_r(
-    cleaned,
-    terminals,
-    terminals_buffer_radius,
-    projected_crs = projected_crs,
-    backend = backend,
-    projected = projected
-  )
+  if (!is.null(trip_col)) {
+    message(
+      "[INFO] Using supplied trip identities from column '",
+      trip_col,
+      "' (fast path)."
+    )
+    trips <- extract_trips_from_ids_r(
+      cleaned,
+      terminals,
+      trip_col,
+      projected = projected
+    )
+  } else {
+    trips <- extract_trips_r(
+      cleaned,
+      terminals,
+      terminals_buffer_radius,
+      projected_crs = projected_crs,
+      backend = backend,
+      projected = projected
+    )
+  }
   trip_features <- extract_trip_features_r(trips, terminal_ids)
   trip_features <- set_backend(trip_features, backend)
 

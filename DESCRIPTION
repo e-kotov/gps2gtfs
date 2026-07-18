@@ -21,6 +21,7 @@ Imports:
     data.table,
     Rcpp (>= 1.0.0)
 Suggests:
+    gtfsio,
     gtfsrealtime,
     sf,
     testthat (>= 3.0.0)

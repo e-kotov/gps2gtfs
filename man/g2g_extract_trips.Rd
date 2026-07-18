@@ -13,7 +13,8 @@ g2g_extract_trips(
   backend = "auto",
   projected = NULL,
   vehicle_col = "vehicle_id",
-  time_col = "timestamp"
+  time_col = "timestamp",
+  trip_col = NULL
 )
 }
 \arguments{
@@ -42,6 +43,13 @@ projected. Out-of-bounds coordinates require explicit \code{TRUE}.}
 
 \item{time_col}{Character. Name of the timestamp column in \code{gps_data}.
 Default \code{"timestamp"} (GTFS-Realtime convention).}
+
+\item{trip_col}{Character. Optional name of a column holding supplied trip
+identities (e.g. \code{"trip_id"} from GTFS-Realtime Vehicle Positions).
+When given, trips are segmented by those identities (fast path) instead
+of inferred from terminal-buffer crossings; the first/last ping of each
+segment is matched to the nearest terminal for direction assignment.
+Default \code{NULL} (spatial inference).}
 }
 \value{
 A data.table containing extracted trip features.
