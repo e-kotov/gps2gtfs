@@ -19,7 +19,8 @@ g2g_extract_trips_and_stop_times(
   stop_direction_map = NULL,
   vehicle_col = "vehicle_id",
   time_col = "timestamp",
-  trip_col = NULL
+  trip_col = NULL,
+  return_trajectory = FALSE
 )
 }
 \arguments{
@@ -66,9 +67,14 @@ When given, trips are segmented by those identities (fast path) instead
 of inferred from terminal-buffer crossings; the first/last ping of each
 segment is matched to the nearest terminal for direction assignment.
 Default \code{NULL} (spatial inference).}
+
+\item{return_trajectory}{Logical. Also return the ping-level trajectory
+(cleaned GPS records with assigned \code{trip_id} and \code{direction})
+as a \code{trajectory} element — the input for
+\code{\link{g2g_shapes_from_trips}}. Default \code{FALSE}.}
 }
 \value{
-A list containing two data.tables: \code{trips} and \code{stop_times} (with columns matching GTFS standard naming).
+A list containing two data.tables: \code{trips} and \code{stop_times} (with columns matching GTFS standard naming), plus \code{trajectory} when \code{return_trajectory = TRUE}.
 }
 \description{
 Reads raw GPS, terminal, and stop CSV files, extracts trips and stop times, and optionally writes results.
