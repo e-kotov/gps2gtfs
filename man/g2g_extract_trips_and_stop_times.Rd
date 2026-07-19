@@ -19,7 +19,9 @@ g2g_extract_trips_and_stop_times(
   stop_direction_map = NULL,
   vehicle_col = "vehicle_id",
   time_col = "timestamp",
+  tz = NULL,
   trip_col = NULL,
+  session_gap = 4 * 3600,
   return_trajectory = FALSE
 )
 }
@@ -61,12 +63,30 @@ stop-direction label to its starting terminal ID.}
 \item{time_col}{Character. Name of the timestamp column in \code{gps_data}.
 Default \code{"timestamp"} (GTFS-Realtime convention).}
 
-\item{trip_col}{Character. Optional name of a column holding supplied trip
-identities (e.g. \code{"trip_id"} from GTFS-Realtime Vehicle Positions).
-When given, trips are segmented by those identities (fast path) instead
-of inferred from terminal-buffer crossings; the first/last ping of each
-segment is matched to the nearest terminal for direction assignment.
-Default \code{NULL} (spatial inference).}
+\item{tz}{Character. Timezone in which non-\code{POSIXct} timestamps are
+interpreted; also the timezone whose midnight bounds service days and
+thus every downstream GTFS clock string. Pass the feed's operating
+timezone, or supply localized \code{POSIXct} timestamps. \code{NULL}
+(default) parses character input as UTC with a warning. Passed to
+\code{\link{g2g_clean_gps}}.}
+
+\item{trip_col}{Character. Optional name(s) of column(s) holding supplied
+trip identities (e.g. \code{"trip_id"} from GTFS-Realtime Vehicle
+Positions). When given, trips are segmented by those identities (fast
+path) instead of inferred from terminal-buffer crossings; the first/last
+ping of each segment is matched to the nearest terminal for direction
+assignment. May be several columns that jointly identify a trip - e.g.
+\code{c("route_id", "direction_id", "start_date", "start_time")}, the
+GTFS-Realtime TripDescriptor, for feeds whose positions carry no
+\code{trip_id}; they are combined into one identity. Default \code{NULL}
+(spatial inference).}
+
+\item{session_gap}{Numeric. Successive observations of a vehicle further
+apart than this many seconds start a new driving session; trips never
+span sessions. This replaces the former calendar-date boundary, so
+overnight trips crossing midnight stay intact while overnight parking
+still separates one day's operations from the next. Default 4 hours
+(\code{4 * 3600}).}
 
 \item{return_trajectory}{Logical. Also return the ping-level trajectory
 (cleaned GPS records with assigned \code{trip_id} and \code{direction})
@@ -74,11 +94,36 @@ as a \code{trajectory} element — the input for
 \code{\link{g2g_shapes_from_trips}}. Default \code{FALSE}.}
 }
 \value{
-A list containing two data.tables: \code{trips} and \code{stop_times} (with columns matching GTFS standard naming), plus \code{trajectory} when \code{return_trajectory = TRUE}.
+A list containing two data.tables: \code{trips} and
+  \code{stop_times}, plus \code{trajectory} when
+  \code{return_trajectory = TRUE}. All times (\code{start_time},
+  \code{end_time}, \code{arrival_time}, \code{departure_time}) are absolute
+  \code{POSIXct} values in the timezone of the input timestamps — never
+  clock strings, so trips running past midnight stay unambiguous.
 }
 \description{
 Reads raw GPS, terminal, and stop CSV files, extracts trips and stop times, and optionally writes results.
 }
+\section{Inference tables, not GTFS files}{
+
+The returned \code{trips} and \code{stop_times} use GTFS-style column
+names but are *inference tables*, not valid \code{trips.txt}/
+\code{stop_times.txt}: they carry no \code{route_id}, \code{service_id},
+\code{stop_sequence}, or GTFS clock strings (\code{"HH:MM:SS"}, with
+\code{>24:00:00} for post-midnight stops). Converting them into a
+standard-compliant static feed — ID linkage, stop sequencing, service-day
+attribution, and time encoding — is the job of a downstream assembler
+such as \code{gtfsrt2static::snapshot_from_stop_times()} +
+\code{snapshot_assemble()}.
+
+Both tables carry a \code{provided_trip_id} column: the caller's official
+trip identity (the \code{trip_col} value, e.g. a GTFS-Realtime
+\code{trip_id}) when the fast path is used, \code{NA} otherwise. It lets a
+downstream assembler preserve official trip IDs instead of synthesizing
+them. The internal integer \code{trip_id} remains the join key between the
+two tables.
+}
+
 \examples{
 \donttest{
 data(g2g_data_gps)

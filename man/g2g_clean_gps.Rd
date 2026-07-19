@@ -9,6 +9,7 @@ g2g_clean_gps(
   projected = NULL,
   vehicle_col = "vehicle_id",
   time_col = "timestamp",
+  tz = NULL,
   dedupe = TRUE,
   drop_missing_vehicle = TRUE
 )
@@ -29,8 +30,18 @@ identifier. Default \code{"vehicle_id"} (GTFS-Realtime convention).}
 
 \item{time_col}{Character. Name of the column holding the observation time.
 Default \code{"timestamp"} (GTFS-Realtime convention). \code{POSIXct}
-input keeps its timezone (service days split at feed-local midnight);
-character input is parsed as UTC.}
+input keeps its own timezone (service days split at feed-local midnight)
+and \code{tz} is ignored for it. Character/numeric input is parsed in
+\code{tz}.}
+
+\item{tz}{Character. Timezone in which non-\code{POSIXct} timestamps are
+interpreted, and therefore the timezone whose midnight bounds service
+days. Because service-day attribution (and every downstream GTFS clock
+string) depends on it, there is no safe default for character input:
+pass the feed's operating timezone (e.g. \code{"America/New_York"}), or
+pass already-localized \code{POSIXct} timestamps. \code{NULL} (default)
+parses character input as UTC \emph{with a warning}; set \code{tz = "UTC"}
+explicitly to silence it when UTC is truly intended.}
 
 \item{dedupe}{Logical. Drop repeated \code{(vehicle_id, timestamp)} rows,
 as produced by archived GTFS-Realtime feeds that re-report unchanged

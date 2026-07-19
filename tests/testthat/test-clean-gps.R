@@ -51,7 +51,12 @@ test_that("custom column names map onto the canonical schema", {
     stringsAsFactors = FALSE
   )
 
-  cleaned <- g2g_clean_gps(avl, vehicle_col = "bus_no", time_col = "gps_time")
+  cleaned <- g2g_clean_gps(
+    avl,
+    vehicle_col = "bus_no",
+    time_col = "gps_time",
+    tz = "UTC"
+  )
 
   expect_identical(cleaned$vehicle_id, c("12", "12"))
   expect_s3_class(cleaned$timestamp, "POSIXct")
@@ -159,4 +164,40 @@ test_that("pipeline accepts column mapping end to end", {
   )
   expect_true(nrow(result) > 0L)
   expect_true("vehicle_id" %in% names(result))
+})
+
+test_that("character timestamps: tz is honored and its absence warns", {
+  pings <- data.frame(
+    vehicle_id = "bus-a",
+    latitude = 6.9,
+    longitude = 79.9,
+    timestamp = "2026-06-06 23:30:00",
+    speed = 0
+  )
+
+  # No tz -> warns and parses as UTC
+  expect_warning(
+    cleaned_utc <- g2g_clean_gps(pings),
+    "parsing as UTC"
+  )
+  expect_identical(attr(cleaned_utc$timestamp, "tzone"), "UTC")
+
+  # Explicit tz -> silent, and that timezone is used (service day is local)
+  expect_silent(
+    cleaned_local <- g2g_clean_gps(pings, tz = "America/New_York")
+  )
+  expect_identical(attr(cleaned_local$timestamp, "tzone"), "America/New_York")
+  expect_identical(cleaned_local$date, "2026-06-06")
+
+  # tz = "UTC" explicitly silences the warning
+  expect_silent(g2g_clean_gps(pings, tz = "UTC"))
+})
+
+test_that("tz is validated", {
+  pings <- data.frame(
+    vehicle_id = "bus-a", latitude = 6.9, longitude = 79.9,
+    timestamp = "2026-06-06 08:00:00", speed = 0
+  )
+  expect_error(g2g_clean_gps(pings, tz = c("UTC", "GMT")), "single timezone")
+  expect_error(g2g_clean_gps(pings, tz = 5), "single timezone")
 })

@@ -109,8 +109,17 @@ normalize_coordinates <- function(df, projected = NULL, name = "dataset") {
 #'   identifier. Default \code{"vehicle_id"} (GTFS-Realtime convention).
 #' @param time_col Character. Name of the column holding the observation time.
 #'   Default \code{"timestamp"} (GTFS-Realtime convention). \code{POSIXct}
-#'   input keeps its timezone (service days split at feed-local midnight);
-#'   character input is parsed as UTC.
+#'   input keeps its own timezone (service days split at feed-local midnight)
+#'   and \code{tz} is ignored for it. Character/numeric input is parsed in
+#'   \code{tz}.
+#' @param tz Character. Timezone in which non-\code{POSIXct} timestamps are
+#'   interpreted, and therefore the timezone whose midnight bounds service
+#'   days. Because service-day attribution (and every downstream GTFS clock
+#'   string) depends on it, there is no safe default for character input:
+#'   pass the feed's operating timezone (e.g. \code{"America/New_York"}), or
+#'   pass already-localized \code{POSIXct} timestamps. \code{NULL} (default)
+#'   parses character input as UTC \emph{with a warning}; set \code{tz = "UTC"}
+#'   explicitly to silence it when UTC is truly intended.
 #' @param dedupe Logical. Drop repeated \code{(vehicle_id, timestamp)} rows,
 #'   as produced by archived GTFS-Realtime feeds that re-report unchanged
 #'   positions. Default \code{TRUE}.
@@ -133,9 +142,13 @@ g2g_clean_gps <- function(
   projected = NULL,
   vehicle_col = "vehicle_id",
   time_col = "timestamp",
+  tz = NULL,
   dedupe = TRUE,
   drop_missing_vehicle = TRUE
 ) {
+  if (!is.null(tz) && (length(tz) != 1L || !is.character(tz) || is.na(tz))) {
+    stop("'tz' must be a single timezone name or NULL.", call. = FALSE)
+  }
   # Normalize coordinates and convert to data.table
   norm <- normalize_coordinates(
     raw_gps_df,
@@ -198,9 +211,24 @@ g2g_clean_gps <- function(
     dt <- dt[!missing_vehicle]
   }
 
-  # Parse timestamps; POSIXct input keeps its timezone
+  # Parse timestamps. POSIXct input keeps its own timezone; character/numeric
+  # input is interpreted in `tz`. Because service-day attribution (and every
+  # downstream GTFS clock string) hinges on this, parsing non-POSIXct input
+  # without an explicit tz falls back to UTC but warns - a silent local->UTC
+  # reinterpretation would shift service dates around midnight.
   if (!inherits(dt$timestamp, "POSIXct")) {
-    dt[, timestamp := as.POSIXct(timestamp, tz = "UTC")]
+    parse_tz <- tz
+    if (is.null(parse_tz)) {
+      warning(
+        "'timestamp' is not POSIXct and 'tz' was not supplied; parsing as ",
+        "UTC. If the timestamps are in feed-local time, pass tz= (the feed's ",
+        "operating timezone) or supply POSIXct timestamps - otherwise service ",
+        "days may be attributed to the wrong date around midnight.",
+        call. = FALSE
+      )
+      parse_tz <- "UTC"
+    }
+    dt[, timestamp := as.POSIXct(timestamp, tz = parse_tz)]
   }
   if (anyNA(dt$timestamp)) {
     stop(

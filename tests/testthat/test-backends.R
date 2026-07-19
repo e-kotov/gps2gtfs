@@ -154,7 +154,7 @@ test_that("coordinate validation is strict and projected integers work", {
     g2g_clean_gps(transform(valid, latitude = Inf)),
     "must not contain NA, NaN, or infinite"
   )
-  expect_identical(attr(g2g_clean_gps(valid), "projected"), FALSE)
+  expect_identical(attr(g2g_clean_gps(valid, tz = "UTC"), "projected"), FALSE)
 
   projected_gps <- data.frame(
     id = 1:2,
@@ -169,7 +169,7 @@ test_that("coordinate validation is strict and projected integers work", {
     latitude = c(1000000L, 1000200L),
     longitude = c(500000L, 500000L)
   )
-  cleaned <- g2g_clean_gps(projected_gps, projected = TRUE)
+  cleaned <- g2g_clean_gps(projected_gps, projected = TRUE, tz = "UTC")
 
   if (is_rcpp_available()) {
     expect_equal(
@@ -234,7 +234,7 @@ test_that("empty inputs and no matches return stable typed schemas", {
     longitude = 79.9,
     timestamp = "2026-06-06 08:00:00",
     speed = 0
-  ))
+  ), tz = "UTC")
   far_terminals <- data.frame(
     terminal_id = c("A", "B"),
     latitude = c(7.5, 7.6),

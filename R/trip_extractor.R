@@ -74,9 +74,10 @@ nearest_terminal_id <- function(lat, lon, terminals, projected) {
 #' When the GPS data already carries trip identities (e.g. GTFS-Realtime
 #' Vehicle Positions with a \code{trip_id} annotation), segmentation by those
 #' identities replaces terminal-buffer detection. Each contiguous run of the
-#' same trip value per vehicle and date becomes one trip; its first and last
-#' pings are treated as terminal entry/exit and matched to the nearest
-#' terminal so that direction semantics stay identical to the spatial path.
+#' same trip value per vehicle and driving session becomes one trip; its
+#' first and last pings are treated as terminal entry/exit and matched to
+#' the nearest terminal so that direction semantics stay identical to the
+#' spatial path.
 #'
 #' @param cleaned_gps_dt A data.table of cleaned GPS data.
 #' @param trip_terminals_df Terminal coordinates with \code{terminal_id}.
@@ -89,13 +90,14 @@ extract_trips_from_ids_r <- function(
   cleaned_gps_dt,
   trip_terminals_df,
   trip_col,
-  projected = NULL
+  projected = NULL,
+  session_gap = 4 * 3600
 ) {
-  if (!trip_col %in% names(cleaned_gps_dt)) {
+  missing_cols <- setdiff(trip_col, names(cleaned_gps_dt))
+  if (length(missing_cols) > 0L) {
     stop(
-      "'trip_col' column '",
-      trip_col,
-      "' not found in the GPS data.",
+      "'trip_col' column(s) not found in the GPS data: ",
+      paste(missing_cols, collapse = ", "),
       call. = FALSE
     )
   }
@@ -126,7 +128,23 @@ extract_trips_from_ids_r <- function(
   }
 
   dt <- data.table::copy(cleaned_gps_dt)
-  dt[, rt_trip_value := as.character(dt[[trip_col]])]
+  # trip_col may name one column, or several that jointly identify a trip
+  # (e.g. the GTFS-RT TripDescriptor route_id/direction_id/start_date/start_time
+  # when vehicle positions carry no trip_id). Compose them into one identity;
+  # a row is unusable only if every component is missing.
+  if (length(trip_col) == 1L) {
+    dt[, rt_trip_value := as.character(dt[[trip_col]])]
+  } else {
+    comp <- lapply(trip_col, function(col) {
+      v <- as.character(dt[[col]])
+      v[is.na(v)] <- ""
+      v
+    })
+    joined <- do.call(paste, c(comp, sep = "_"))
+    any_present <- Reduce(`|`, lapply(comp, nzchar))
+    joined[!any_present] <- NA_character_
+    dt[, rt_trip_value := joined]
+  }
   seg_dt <- dt[!is.na(rt_trip_value) & nzchar(trimws(rt_trip_value))]
   if (nrow(seg_dt) == 0L) {
     message(
@@ -137,8 +155,16 @@ extract_trips_from_ids_r <- function(
     return(empty_result())
   }
 
-  data.table::setkeyv(seg_dt, c("vehicle_id", "date", "time_str"))
-  seg_dt[, trip_id := data.table::rleid(vehicle_id, date, rt_trip_value)]
+  data.table::setkeyv(seg_dt, c("vehicle_id", "timestamp"))
+  # Segment within driving sessions (ping gaps > session_gap start a new
+  # one) instead of calendar days, so an annotated trip crossing midnight
+  # stays one segment while a trip value reused the next day still splits.
+  seg_dt[,
+    trip_session := cumsum(c(0, diff(as.numeric(timestamp))) > session_gap),
+    by = vehicle_id
+  ]
+  seg_dt[, trip_id := data.table::rleid(vehicle_id, trip_session, rt_trip_value)]
+  seg_dt[, trip_session := NULL]
   seg_dt[, seg_n := .N, by = trip_id]
 
   n_single <- seg_dt[seg_n < 2L, data.table::uniqueN(trip_id)]
@@ -168,7 +194,11 @@ extract_trips_from_ids_r <- function(
       projected
     )
   ]
-  bounds[, c("rt_trip_value", "seg_n") := NULL]
+  # Keep rt_trip_value: it is the caller's official trip identity (e.g. the
+  # GTFS-RT trip_id) and must survive to the output so downstream assembly
+  # can preserve it. extract_trip_features_r() surfaces it as
+  # provided_trip_id.
+  bounds[, seg_n := NULL]
   bounds[]
 }
 
@@ -191,7 +221,8 @@ extract_trips_r <- function(
   buffer_radius,
   projected_crs = 5234,
   backend = "rust",
-  projected = NULL
+  projected = NULL,
+  session_gap = 4 * 3600
 ) {
   backend <- match.arg(backend, c("rcpp", "pure_r", "rust"))
   validate_positive_radius(buffer_radius, "buffer_radius")
@@ -346,16 +377,29 @@ extract_trips_r <- function(
   # Sort before pairing
   data.table::setkeyv(
     trip_terminals_gps_dt,
-    c("vehicle_id", "date", "timestamp")
+    c("vehicle_id", "timestamp")
   )
 
+  # Pair terminal events within driving sessions, not calendar days: a
+  # session breaks when the vehicle goes unseen for longer than session_gap,
+  # so trips crossing midnight stay intact while overnight parking still
+  # separates one day's events from the next. The backends only test key
+  # equality, so the session key travels through their 'dates' parameter.
+  trip_terminals_gps_dt[,
+    pairing_session := cumsum(
+      c(0, diff(as.numeric(timestamp))) > session_gap
+    ),
+    by = vehicle_id
+  ]
+
+  session_keys <- as.character(trip_terminals_gps_dt$pairing_session)
   device_keys <- as.character(trip_terminals_gps_dt$vehicle_id)
   # Assign trip IDs depending on backend
   if (backend == "rcpp") {
     trip_terminals_gps_dt[,
       trip_id := assign_trip_ids_cpp(
         as.character(bus_stop),
-        as.character(date),
+        session_keys,
         device_keys
       )
     ]
@@ -363,7 +407,7 @@ extract_trips_r <- function(
     trip_terminals_gps_dt[,
       trip_id := assign_trip_ids_rust(
         as.character(bus_stop),
-        as.character(date),
+        session_keys,
         device_keys
       )
     ]
@@ -371,11 +415,12 @@ extract_trips_r <- function(
     trip_terminals_gps_dt[,
       trip_id := assign_trip_ids_pure_r(
         as.character(bus_stop),
-        as.character(date),
+        session_keys,
         device_keys
       )
     ]
   }
+  trip_terminals_gps_dt[, pairing_session := NULL]
 
   # Filter out unmatched records
   trips_dt <- trip_terminals_gps_dt[trip_id > 0]
@@ -425,6 +470,13 @@ extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
     )
   )
 
+  # Official caller-supplied trip identity (fast path only); NA otherwise.
+  provided_trip_id <- if ("rt_trip_value" %in% names(starts)) {
+    as.character(starts$rt_trip_value)
+  } else {
+    NA_character_
+  }
+
   trip_features_dt <- data.table::data.table(
     trip_id = starts$trip_id,
     vehicle_id = starts$vehicle_id,
@@ -432,8 +484,9 @@ extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
     start_terminal = starts$bus_stop,
     end_terminal = ends$bus_stop,
     direction = direction_vec,
-    start_time = starts$time_str,
-    end_time = ends$time_str
+    start_time = starts$timestamp,
+    end_time = ends$timestamp,
+    provided_trip_id = provided_trip_id
   )
 
   # Duration in minutes
