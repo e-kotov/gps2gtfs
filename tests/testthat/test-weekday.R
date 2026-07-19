@@ -24,7 +24,6 @@ test_that("trip extraction uses weekday feature schema", {
       tz = "UTC"
     )
   )
-  trips[, time_str := format(timestamp, "%H:%M:%S")]
 
   features <- extract_trip_features_r(trips, terminal_ids = c("A", "B"))
 

@@ -29,6 +29,14 @@ validate_positive_radius <- function(x, name) {
   }
 }
 
+validate_session_gap <- function(x) {
+  if (
+    length(x) != 1L || !is.numeric(x) || is.na(x) || !is.finite(x) || x <= 0
+  ) {
+    stop("'session_gap' must be one positive finite number of seconds.", call. = FALSE)
+  }
+}
+
 validate_projected_crs <- function(projected_crs) {
   if (
     !is.null(projected_crs) &&
@@ -92,8 +100,9 @@ empty_trip_features <- function(vehicle_id = character()) {
     start_terminal = character(),
     end_terminal = character(),
     direction = integer(),
-    start_time = character(),
-    end_time = character(),
+    start_time = as.POSIXct(character(), tz = "UTC"),
+    end_time = as.POSIXct(character(), tz = "UTC"),
+    provided_trip_id = character(),
     duration_in_mins = double(),
     day_of_week = factor(
       levels = 0:6,
@@ -112,8 +121,8 @@ empty_stop_times <- function(vehicle_id = character()) {
     date = character(),
     direction = integer(),
     stop_id = character(),
-    arrival_time = character(),
-    departure_time = character(),
+    arrival_time = as.POSIXct(character(), tz = "UTC"),
+    departure_time = as.POSIXct(character(), tz = "UTC"),
     dwell_time_in_seconds = double(),
     day_of_week = factor(
       levels = 0:6,
@@ -121,7 +130,8 @@ empty_stop_times <- function(vehicle_id = character()) {
       ordered = TRUE
     ),
     hour_of_day = integer(),
-    is_weekday = logical()
+    is_weekday = logical(),
+    provided_trip_id = character()
   )
 }
 

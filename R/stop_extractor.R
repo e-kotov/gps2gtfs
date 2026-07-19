@@ -466,14 +466,16 @@ extract_stops_r <- function(
         dep_time <- arr_time
       }
 
+      # Absolute POSIXct times: "HH:MM:SS" strings wrap at midnight, which
+      # corrupts post-midnight stops of overnight trips downstream.
       .(
         trip_id = trip_id[1],
         vehicle_id = vehicle_id[1],
         date = date[1],
         direction = direction[1],
         bus_stop = bus_stop[1],
-        arrival_time = format(arr_time, "%H:%M:%S"),
-        departure_time = format(dep_time, "%H:%M:%S"),
+        arrival_time = arr_time,
+        departure_time = dep_time,
         dwell_time_in_seconds = as.numeric(difftime(
           dep_time,
           arr_time,
@@ -487,7 +489,7 @@ extract_stops_r <- function(
   # Add derived features
   weekday_features <- make_weekday_features(stop_times_dt$date)
   stop_times_dt[, day_of_week := weekday_features$day_of_week]
-  stop_times_dt[, hour_of_day := as.integer(substr(arrival_time, 1, 2))]
+  stop_times_dt[, hour_of_day := as.integer(format(arrival_time, "%H"))]
   stop_times_dt[, is_weekday := weekday_features$is_weekday]
 
   # Clean columns

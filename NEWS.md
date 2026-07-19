@@ -12,6 +12,9 @@
   `g2g_extract_trips_and_stop_times()`: when positions already carry trip
   identities (e.g. GTFS-Realtime `trip_id`), trips are segmented by those
   identities (fast path) instead of inferred from terminal-buffer crossings.
+  `trip_col` may name several columns that jointly identify a trip — e.g.
+  `c("route_id", "direction_id", "start_date", "start_time")`, the GTFS-RT
+  TripDescriptor — for feeds whose positions carry no `trip_id`.
 * `direction` in trip features is now consistently integer.
 
 ## New features (baseline-free mode)
@@ -36,6 +39,23 @@
   arguments of `g2g_clean_gps()`, `g2g_extract_trips()`, and
   `g2g_extract_trips_and_stop_times()`.
 * The example dataset `g2g_data_gps` uses the new column names.
+* All times in the returned tables are now absolute `POSIXct` values in the
+  timezone of the input timestamps: `arrival_time`/`departure_time` in
+  `$stop_times` and `start_time`/`end_time` in `$trips` were previously
+  `"HH:MM:SS"` strings, which wrapped at midnight and silently corrupted
+  post-midnight stops of overnight trips. Format with
+  `format(x, "%H:%M:%S")` if clock strings are needed; GTFS clock encoding
+  (including `>24:00:00`) belongs to downstream feed assembly.
+* The returned `trips` and `stop_times` are documented as *inference
+  tables*, not valid GTFS `trips.txt`/`stop_times.txt` (no `route_id`,
+  `service_id`, `stop_sequence`, or GTFS clock strings); see
+  `?g2g_extract_trips_and_stop_times`.
+* Trips are now segmented within *driving sessions* instead of calendar
+  days: previously an overnight trip crossing midnight was silently dropped
+  (spatial path) or split in two (`trip_col` fast path). A new session
+  starts when a vehicle goes unseen for longer than the new `session_gap`
+  argument (default 4 hours), so midnight-crossing trips survive while
+  overnight parking still separates one day's operations from the next.
 
 ## New features
 
@@ -44,6 +64,13 @@
   `(vehicle_id, timestamp)` observations, and `drop_missing_vehicle = TRUE`
   removes rows with missing vehicle identifiers with a warning instead of
   failing.
+* `g2g_clean_gps()`, `g2g_extract_trips()`, and
+  `g2g_extract_trips_and_stop_times()` gain a `tz` argument controlling the
+  timezone in which non-`POSIXct` timestamps are parsed — and therefore the
+  timezone whose midnight bounds service days and every downstream GTFS
+  clock string. Character timestamps parsed without an explicit `tz` now
+  warn (and fall back to UTC) instead of silently reinterpreting local times
+  as UTC, which could shift service dates around midnight.
 * `g2g_clean_gps()` now generates row `id`s when the column is absent or not
   unique, treats `speed` as optional (with a warning, since dwell-time
   estimation relies on `speed == 0`), passes non-canonical columns through
