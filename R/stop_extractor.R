@@ -99,11 +99,34 @@ prepare_trajectory_r <- function(
 resolve_stop_directions <- function(
   stops_df,
   terminal_ids,
-  stop_direction_map = NULL
+  stop_direction_map = NULL,
+  direction_levels = NULL
 ) {
   validate_required_columns(stops_df, c("stop_id", "direction"), "stops_df")
   validate_identifiers(stops_df$stop_id, "stops_df 'stop_id'")
   validate_identifiers(stops_df$direction, "stops_df 'direction'")
+
+  # Data-driven direction: the stop 'direction' labels are direction ids
+  # (e.g. GTFS-RT direction_id), mapped onto 1..K by the shared level set.
+  # No terminals, and any number of groups (2 for bidirectional, 1 for a
+  # one-way service, more for multi-branch).
+  if (!is.null(direction_levels)) {
+    levels_chr <- as.character(direction_levels)
+    dir <- match(as.character(stops_df$direction), levels_chr)
+    if (anyNA(dir)) {
+      stop(
+        "stops_df 'direction' contains value(s) not in the supplied ",
+        "direction set (",
+        paste(levels_chr, collapse = ", "),
+        "): ",
+        paste(unique(setdiff(as.character(stops_df$direction), levels_chr)),
+          collapse = ", "
+        ),
+        call. = FALSE
+      )
+    }
+    return(dir)
+  }
 
   terminal_ids <- unique(as.character(terminal_ids))
   if (length(terminal_ids) != 2L) {
@@ -201,7 +224,8 @@ extract_stops_r <- function(
   backend = "rust",
   projected = NULL,
   stop_direction_map = NULL,
-  terminal_ids = NULL
+  terminal_ids = NULL,
+  direction_levels = NULL
 ) {
   backend <- match.arg(backend, c("rcpp", "pure_r", "rust"))
   validate_positive_radius(buffer_radius, "buffer_radius")
@@ -214,7 +238,7 @@ extract_stops_r <- function(
     }
   }
 
-  # Normalize and validate stops and terminal coordinates
+  # Normalize and validate stops
   norm_stops <- normalize_coordinates(
     stops_df,
     projected = projected,
@@ -222,23 +246,38 @@ extract_stops_r <- function(
   )
   stops_df <- norm_stops$dt
 
-  norm_terminals <- normalize_coordinates(
-    trip_terminals_df,
-    projected = projected,
-    name = "trip_terminals_df"
-  )
-  trip_terminals_df <- norm_terminals$dt
-  validate_required_columns(
-    trip_terminals_df,
-    "terminal_id",
-    "trip_terminals_df"
-  )
-  validate_identifiers(
-    trip_terminals_df$terminal_id,
-    "trip_terminals_df 'terminal_id'"
-  )
-  if (is.null(terminal_ids)) {
-    terminal_ids <- unique(as.character(trip_terminals_df$terminal_id))
+  # Terminals are optional in data-driven direction mode: when direction comes
+  # from the data (direction_levels) they are only used to drop terminal points
+  # if supplied. In the classic terminal mode they define the two directions.
+  have_terminals <- !is.null(trip_terminals_df) &&
+    nrow(data.table::as.data.table(trip_terminals_df)) > 0L
+  if (have_terminals) {
+    trip_terminals_df <- normalize_coordinates(
+      trip_terminals_df,
+      projected = projected,
+      name = "trip_terminals_df"
+    )$dt
+    validate_required_columns(
+      trip_terminals_df,
+      "terminal_id",
+      "trip_terminals_df"
+    )
+    validate_identifiers(
+      trip_terminals_df$terminal_id,
+      "trip_terminals_df 'terminal_id'"
+    )
+    if (is.null(terminal_ids)) {
+      terminal_ids <- unique(as.character(trip_terminals_df$terminal_id))
+    }
+  } else {
+    if (is.null(direction_levels)) {
+      stop(
+        "'trip_terminals_df' is required unless 'direction_levels' is ",
+        "supplied (data-driven direction mode).",
+        call. = FALSE
+      )
+    }
+    trip_terminals_df <- data.table::data.table(terminal_id = character(0))
   }
   if (nrow(stops_df) == 0L) {
     validate_required_columns(stops_df, c("stop_id", "direction"), "stops_df")
@@ -247,7 +286,8 @@ extract_stops_r <- function(
   stops_df[["internal_direction"]] <- resolve_stop_directions(
     stops_df,
     terminal_ids,
-    stop_direction_map
+    stop_direction_map,
+    direction_levels = direction_levels
   )
 
   if (nrow(trajectory_dt) == 0L) {
@@ -255,85 +295,43 @@ extract_stops_r <- function(
   }
 
   if (backend == "rcpp" || backend == "rust") {
-    # Split trajectory and stops by direction
-    traj_d1 <- data.table::copy(trajectory_dt[direction == 1])
-    traj_d2 <- data.table::copy(trajectory_dt[direction == 2])
-
-    stops_d1 <- stops_df[stops_df$internal_direction == 1]
-    stops_d2 <- stops_df[stops_df$internal_direction == 2]
-
-    if (backend == "rcpp") {
-      if (nrow(traj_d1) > 0 && nrow(stops_d1) > 0) {
-        traj_d1[,
-          bus_stop := match_points_to_buffers_cpp(
-            as.double(latitude),
-            as.double(longitude),
-            as.double(stops_d1$latitude),
-            as.double(stops_d1$longitude),
-            as.character(stops_d1$stop_id),
-            buffer_radius,
-            extended_buffer_radius,
-            !projected
-          )
-        ]
-      } else {
-        traj_d1[, bus_stop := character(0)]
-      }
-
-      if (nrow(traj_d2) > 0 && nrow(stops_d2) > 0) {
-        traj_d2[,
-          bus_stop := match_points_to_buffers_cpp(
-            as.double(latitude),
-            as.double(longitude),
-            as.double(stops_d2$latitude),
-            as.double(stops_d2$longitude),
-            as.character(stops_d2$stop_id),
-            buffer_radius,
-            extended_buffer_radius,
-            !projected
-          )
-        ]
-      } else {
-        traj_d2[, bus_stop := character(0)]
-      }
+    # Match within each direction group. Groups are the distinct internal
+    # direction ids present (2 for a classic bidirectional route mapped onto
+    # two terminals, but any number when direction is supplied from the data,
+    # e.g. GTFS-RT direction_id, so short-turn/variant routes with >2 terminals
+    # and one-way services still work).
+    matcher <- if (backend == "rcpp") {
+      match_points_to_buffers_cpp
     } else {
-      if (nrow(traj_d1) > 0 && nrow(stops_d1) > 0) {
-        traj_d1[,
-          bus_stop := match_points_to_buffers_rust(
-            as.double(latitude),
-            as.double(longitude),
-            as.double(stops_d1$latitude),
-            as.double(stops_d1$longitude),
-            as.character(stops_d1$stop_id),
-            buffer_radius,
-            extended_buffer_radius,
-            !projected
-          )
-        ]
-      } else {
-        traj_d1[, bus_stop := character(0)]
-      }
-
-      if (nrow(traj_d2) > 0 && nrow(stops_d2) > 0) {
-        traj_d2[,
-          bus_stop := match_points_to_buffers_rust(
-            as.double(latitude),
-            as.double(longitude),
-            as.double(stops_d2$latitude),
-            as.double(stops_d2$longitude),
-            as.character(stops_d2$stop_id),
-            buffer_radius,
-            extended_buffer_radius,
-            !projected
-          )
-        ]
-      } else {
-        traj_d2[, bus_stop := character(0)]
-      }
+      match_points_to_buffers_rust
     }
+    groups <- sort(unique(stops_df$internal_direction))
+    matched <- lapply(groups, function(g) {
+      traj_g <- data.table::copy(trajectory_dt[direction == g])
+      stops_g <- stops_df[stops_df$internal_direction == g]
+      if (nrow(traj_g) > 0 && nrow(stops_g) > 0) {
+        traj_g[,
+          bus_stop := matcher(
+            as.double(latitude),
+            as.double(longitude),
+            as.double(stops_g$latitude),
+            as.double(stops_g$longitude),
+            as.character(stops_g$stop_id),
+            buffer_radius,
+            extended_buffer_radius,
+            !projected
+          )
+        ]
+      } else if (nrow(traj_g) > 0) {
+        traj_g[, bus_stop := NA_character_]
+      } else {
+        traj_g[, bus_stop := character(0)]
+      }
+      traj_g
+    })
 
     # Combine results
-    stops_dt <- data.table::rbindlist(list(traj_d1, traj_d2))
+    stops_dt <- data.table::rbindlist(matched)
     stops_dt <- stops_dt[!is.na(bus_stop)]
   } else {
     # Planar sf matching (Pure R)
@@ -371,17 +369,7 @@ extract_stops_r <- function(
       )
       stops_sf <- sf::st_transform(stops_sf, projected_crs)
     }
-    # Split stops by direction
-    stops_dir1 <- stops_sf[stops_sf$internal_direction == 1, ]
-    stops_dir2 <- stops_sf[stops_sf$internal_direction == 2, ]
-
-    # Create buffers
-    dir1_buffer <- sf::st_buffer(stops_dir1, buffer_radius)
-    dir2_buffer <- sf::st_buffer(stops_dir2, buffer_radius)
-    dir1_extended <- sf::st_buffer(stops_dir1, extended_buffer_radius)
-    dir2_extended <- sf::st_buffer(stops_dir2, extended_buffer_radius)
-
-    # Helper to perform spatial matching for a direction
+    # Helper to perform spatial matching for one direction group
     match_direction <- function(traj_sf, std_buffer, ext_buffer) {
       if (nrow(traj_sf) == 0) {
         return(data.table::data.table())
@@ -417,15 +405,23 @@ extract_stops_r <- function(
       return(joined_std[!is.na(stop_id)])
     }
 
-    # Split trajectories and match
-    traj_sf_d1 <- trajectory_sf[trajectory_sf$direction == 1, ]
-    traj_sf_d2 <- trajectory_sf[trajectory_sf$direction == 2, ]
-
-    matched_d1 <- match_direction(traj_sf_d1, dir1_buffer, dir1_extended)
-    matched_d2 <- match_direction(traj_sf_d2, dir2_buffer, dir2_extended)
+    # Match within each direction group present (any number of groups)
+    groups <- sort(unique(stops_df$internal_direction))
+    matched <- lapply(groups, function(g) {
+      stops_g <- stops_sf[stops_sf$internal_direction == g, ]
+      traj_g <- trajectory_sf[trajectory_sf$direction == g, ]
+      if (nrow(stops_g) == 0L || nrow(traj_g) == 0L) {
+        return(data.table::data.table())
+      }
+      match_direction(
+        traj_g,
+        sf::st_buffer(stops_g, buffer_radius),
+        sf::st_buffer(stops_g, extended_buffer_radius)
+      )
+    })
 
     # Combine results
-    stops_dt <- data.table::rbindlist(list(matched_d1, matched_d2))
+    stops_dt <- data.table::rbindlist(matched)
     data.table::setnames(stops_dt, "stop_id", "bus_stop")
   }
 

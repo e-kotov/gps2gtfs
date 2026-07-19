@@ -91,12 +91,13 @@ extract_trips_from_ids_r <- function(
   trip_terminals_df,
   trip_col,
   projected = NULL,
-  session_gap = 4 * 3600
+  session_gap = 4 * 3600,
+  direction_col = NULL
 ) {
-  missing_cols <- setdiff(trip_col, names(cleaned_gps_dt))
+  missing_cols <- setdiff(c(trip_col, direction_col), names(cleaned_gps_dt))
   if (length(missing_cols) > 0L) {
     stop(
-      "'trip_col' column(s) not found in the GPS data: ",
+      "column(s) not found in the GPS data: ",
       paste(missing_cols, collapse = ", "),
       call. = FALSE
     )
@@ -108,23 +109,41 @@ extract_trips_from_ids_r <- function(
     }
   }
 
-  norm_terminals <- normalize_coordinates(
-    trip_terminals_df,
-    projected = projected,
-    name = "trip_terminals_df"
-  )
-  terminals <- norm_terminals$dt
-  validate_required_columns(terminals, "terminal_id", "trip_terminals_df")
-  validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
+  # Terminals are optional when direction is supplied from the data
+  # (direction_col): they are then only used, if present, to drop terminal
+  # points. Without direction_col they define the two directions.
+  have_terminals <- !is.null(trip_terminals_df) &&
+    nrow(data.table::as.data.table(trip_terminals_df)) > 0L
+  if (have_terminals) {
+    terminals <- normalize_coordinates(
+      trip_terminals_df,
+      projected = projected,
+      name = "trip_terminals_df"
+    )$dt
+    validate_required_columns(terminals, "terminal_id", "trip_terminals_df")
+    validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
+  } else {
+    terminals <- data.table::data.table(terminal_id = character(0))
+  }
 
   empty_result <- function() {
     result <- data.table::copy(cleaned_gps_dt[0])
     result[, bus_stop := character()]
     result[, trip_id := integer()]
+    if (!is.null(direction_col)) {
+      result[, rt_direction := character()]
+    }
     result
   }
-  if (nrow(cleaned_gps_dt) == 0L || nrow(terminals) == 0L) {
+  if (nrow(cleaned_gps_dt) == 0L) {
     return(empty_result())
+  }
+  if (!have_terminals && is.null(direction_col)) {
+    stop(
+      "no terminals supplied and no 'direction_col'; supply one so trip ",
+      "direction can be assigned.",
+      call. = FALSE
+    )
   }
 
   dt <- data.table::copy(cleaned_gps_dt)
@@ -182,18 +201,36 @@ extract_trips_from_ids_r <- function(
     return(empty_result())
   }
 
+  # Capture the supplied direction per trip (first non-missing value in the
+  # segment) before collapsing to bounds, so direction can come from the data
+  # instead of terminal inference.
+  if (!is.null(direction_col)) {
+    seg_dt[, rt_direction := {
+      v <- as.character(.SD[[direction_col]])
+      v <- v[!is.na(v) & nzchar(trimws(v))]
+      if (length(v) > 0L) v[1L] else NA_character_
+    }, by = trip_id, .SDcols = direction_col]
+  }
+
   # Renumber to consecutive integers, then keep first/last ping per trip
   seg_dt[, trip_id := data.table::rleid(trip_id)]
   bounds <- seg_dt[, .SD[c(1L, .N)], by = trip_id]
 
-  bounds[,
-    bus_stop := nearest_terminal_id(
-      as.double(latitude),
-      as.double(longitude),
-      terminals,
-      projected
-    )
-  ]
+  # Terminal assignment for direction is only needed in the classic path.
+  # With direction_col, direction comes from rt_direction; terminals (if any)
+  # are still matched so their points can be dropped from stop_times.
+  if (have_terminals) {
+    bounds[,
+      bus_stop := nearest_terminal_id(
+        as.double(latitude),
+        as.double(longitude),
+        terminals,
+        projected
+      )
+    ]
+  } else {
+    bounds[, bus_stop := NA_character_]
+  }
   # Keep rt_trip_value: it is the caller's official trip identity (e.g. the
   # GTFS-RT trip_id) and must survive to the output so downstream assembly
   # can preserve it. extract_trip_features_r() surfaces it as
@@ -437,7 +474,11 @@ extract_trips_r <- function(
 #'   including ordered factor day_of_week and logical is_weekday.
 #' @importFrom data.table data.table setkeyv
 #' @noRd
-extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
+extract_trip_features_r <- function(
+  trips_dt,
+  terminal_ids = NULL,
+  direction_levels = NULL
+) {
   if (nrow(trips_dt) == 0L) {
     return(empty_trip_features(trips_dt$vehicle_id))
   }
@@ -448,27 +489,36 @@ extract_trip_features_r <- function(trips_dt, terminal_ids = NULL) {
   starts <- trips_dt[seq(1, .N, by = 2)]
   ends <- trips_dt[seq(2, .N, by = 2)]
 
-  # Find unique start terminals for direction mapping
-  terminals <- if (is.null(terminal_ids)) {
-    unique(as.character(starts$bus_stop))
+  if (!is.null(direction_levels) && "rt_direction" %in% names(starts)) {
+    # Data-driven direction: map the supplied direction value onto 1..K via
+    # the shared level set (no terminal assumption).
+    direction_vec <- match(
+      as.character(starts$rt_direction),
+      as.character(direction_levels)
+    )
   } else {
-    unique(as.character(terminal_ids))
-  }
-  if (length(terminals) != 2L) {
-    stop(
-      "Trip extraction requires exactly two distinct terminal IDs.",
-      call. = FALSE
+    # Classic path: direction is which of the two terminals the trip started at.
+    terminals <- if (is.null(terminal_ids)) {
+      unique(as.character(starts$bus_stop))
+    } else {
+      unique(as.character(terminal_ids))
+    }
+    if (length(terminals) != 2L) {
+      stop(
+        "Trip extraction requires exactly two distinct terminal IDs.",
+        call. = FALSE
+      )
+    }
+    direction_vec <- ifelse(
+      starts$bus_stop == terminals[1],
+      1L,
+      ifelse(
+        length(terminals) > 1 & starts$bus_stop == terminals[2],
+        2L,
+        NA_integer_
+      )
     )
   }
-  direction_vec <- ifelse(
-    starts$bus_stop == terminals[1],
-    1L,
-    ifelse(
-      length(terminals) > 1 & starts$bus_stop == terminals[2],
-      2L,
-      NA_integer_
-    )
-  )
 
   # Official caller-supplied trip identity (fast path only); NA otherwise.
   provided_trip_id <- if ("rt_trip_value" %in% names(starts)) {

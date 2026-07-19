@@ -31,6 +31,8 @@ if (getRversion() >= "2.15.1") {
     "grouped_terminals",
     "entry_exit",
     "rt_trip_value",
+    "rt_direction",
+    "internal_direction",
     "provided_trip_id",
     "i.provided_trip_id",
     "seg_n",

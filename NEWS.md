@@ -50,6 +50,18 @@
   tables*, not valid GTFS `trips.txt`/`stop_times.txt` (no `route_id`,
   `service_id`, `stop_sequence`, or GTFS clock strings); see
   `?g2g_extract_trips_and_stop_times`.
+* New `direction_col` argument (used with `trip_col`): trip direction is
+  taken from the data (e.g. GTFS-Realtime `direction_id`) instead of inferred
+  from which of two terminals a trip started at. This makes `terminals_data`
+  optional and handles routes that are not simple two-terminal lines —
+  short-turns, variants, one-way services — which empirically are the
+  majority of real routes (only ~18-27% of routes in the HSL and OVapi feeds
+  are strict two-terminal). Stop matching now works for any number of
+  direction groups. The classic two-terminal behavior is unchanged when
+  `direction_col` is `NULL`.
+* When `trip_col` is supplied and the data has no usable `vehicle_id` (some
+  feeds, e.g. OVapi, leave it empty), a placeholder is filled instead of
+  dropping every row, since trip identities drive segmentation.
 * Trips are now segmented within *driving sessions* instead of calendar
   days: previously an overnight trip crossing midnight was silently dropped
   (spatial path) or split in two (`trip_col` fast path). A new session
