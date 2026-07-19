@@ -130,6 +130,14 @@ result$trips
 result$stop_times
 ```
 
+These are *inference tables*, not finished GTFS files: they use GTFS-style
+naming but carry no `route_id`, `service_id`, or `stop_sequence`, and all
+times are absolute `POSIXct` values (in the input timezone) rather than GTFS
+clock strings — so trips running past midnight stay unambiguous. Assembling
+them into a standard-compliant static feed (ID linkage, stop sequencing,
+`>24:00:00` time encoding) is the job of a downstream assembler such as
+`gtfsrt2static`.
+
 ## Shapes: the geometry actually driven
 
 `return_trajectory = TRUE` exposes the ping-level trajectory, which converts
