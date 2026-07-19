@@ -6,7 +6,7 @@
 \usage{
 g2g_extract_trips_and_stop_times(
   gps_data,
-  terminals_data,
+  terminals_data = NULL,
   stops_data,
   terminals_buffer_radius,
   stops_buffer_radius,
@@ -21,6 +21,7 @@ g2g_extract_trips_and_stop_times(
   time_col = "timestamp",
   tz = NULL,
   trip_col = NULL,
+  direction_col = NULL,
   session_gap = 4 * 3600,
   return_trajectory = FALSE
 )
@@ -73,13 +74,23 @@ timezone, or supply localized \code{POSIXct} timestamps. \code{NULL}
 \item{trip_col}{Character. Optional name(s) of column(s) holding supplied
 trip identities (e.g. \code{"trip_id"} from GTFS-Realtime Vehicle
 Positions). When given, trips are segmented by those identities (fast
-path) instead of inferred from terminal-buffer crossings; the first/last
-ping of each segment is matched to the nearest terminal for direction
-assignment. May be several columns that jointly identify a trip - e.g.
-\code{c("route_id", "direction_id", "start_date", "start_time")}, the
-GTFS-Realtime TripDescriptor, for feeds whose positions carry no
-\code{trip_id}; they are combined into one identity. Default \code{NULL}
-(spatial inference).}
+path) instead of inferred from terminal-buffer crossings. Without
+\code{direction_col}, the first/last ping of each segment is matched to
+the nearest terminal for direction assignment. May be several columns
+that jointly identify a trip - e.g. \code{c("route_id", "direction_id",
+"start_date", "start_time")}, the GTFS-Realtime TripDescriptor, for feeds
+whose positions carry no \code{trip_id}; they are combined into one
+identity. Default \code{NULL} (spatial inference).}
+
+\item{direction_col}{Character. Optional column giving each ping's travel
+direction (e.g. GTFS-Realtime \code{"direction_id"}). Only used with
+\code{trip_col}. When supplied, trip direction is taken from the data
+rather than inferred from which of two terminals a trip started at, so
+\code{terminals_data} becomes optional and routes that are not simple
+two-terminal lines (short-turns, variants, one-way services) are handled.
+For stop-time extraction, stops are grouped for matching by their
+\code{direction} label, which must use the same values as
+\code{direction_col}. Default \code{NULL}.}
 
 \item{session_gap}{Numeric. Successive observations of a vehicle further
 apart than this many seconds start a new driving session; trips never

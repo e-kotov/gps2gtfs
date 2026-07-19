@@ -48,13 +48,22 @@ is_rust_available <- function() {
 #' @param trip_col Character. Optional name(s) of column(s) holding supplied
 #'   trip identities (e.g. \code{"trip_id"} from GTFS-Realtime Vehicle
 #'   Positions). When given, trips are segmented by those identities (fast
-#'   path) instead of inferred from terminal-buffer crossings; the first/last
-#'   ping of each segment is matched to the nearest terminal for direction
-#'   assignment. May be several columns that jointly identify a trip - e.g.
-#'   \code{c("route_id", "direction_id", "start_date", "start_time")}, the
-#'   GTFS-Realtime TripDescriptor, for feeds whose positions carry no
-#'   \code{trip_id}; they are combined into one identity. Default \code{NULL}
-#'   (spatial inference).
+#'   path) instead of inferred from terminal-buffer crossings. Without
+#'   \code{direction_col}, the first/last ping of each segment is matched to
+#'   the nearest terminal for direction assignment. May be several columns
+#'   that jointly identify a trip - e.g. \code{c("route_id", "direction_id",
+#'   "start_date", "start_time")}, the GTFS-Realtime TripDescriptor, for feeds
+#'   whose positions carry no \code{trip_id}; they are combined into one
+#'   identity. Default \code{NULL} (spatial inference).
+#' @param direction_col Character. Optional column giving each ping's travel
+#'   direction (e.g. GTFS-Realtime \code{"direction_id"}). Only used with
+#'   \code{trip_col}. When supplied, trip direction is taken from the data
+#'   rather than inferred from which of two terminals a trip started at, so
+#'   \code{terminals_data} becomes optional and routes that are not simple
+#'   two-terminal lines (short-turns, variants, one-way services) are handled.
+#'   For stop-time extraction, stops are grouped for matching by their
+#'   \code{direction} label, which must use the same values as
+#'   \code{direction_col}. Default \code{NULL}.
 #' @param session_gap Numeric. Successive observations of a vehicle further
 #'   apart than this many seconds start a new driving session; trips never
 #'   span sessions. This replaces the former calendar-date boundary, so
@@ -90,6 +99,7 @@ g2g_extract_trips <- function(
   time_col = "timestamp",
   tz = NULL,
   trip_col = NULL,
+  direction_col = NULL,
   session_gap = 4 * 3600
 ) {
   backend <- resolve_backend(backend)
@@ -99,10 +109,25 @@ g2g_extract_trips <- function(
   if (isTRUE(projected) && is.null(projected_crs)) {
     stop("'projected_crs' is required when 'projected = TRUE'.", call. = FALSE)
   }
+  if (!is.null(direction_col) && is.null(trip_col)) {
+    stop(
+      "'direction_col' is only used with 'trip_col'.",
+      call. = FALSE
+    )
+  }
   message("Starting Pipeline for extracting Trip Data using backend: ", backend)
 
   raw_gps_df <- if (is.character(gps_data) && length(gps_data) == 1L) data.table::fread(gps_data) else data.table::as.data.table(gps_data)
-  trip_terminals_df <- if (is.character(terminals_data) && length(terminals_data) == 1L) data.table::fread(terminals_data) else data.table::as.data.table(terminals_data)
+  if (!is.null(trip_col)) {
+    if (!vehicle_col %in% names(raw_gps_df) || all(is.na(raw_gps_df[[vehicle_col]]))) {
+      message(
+        "[INFO] No usable '", vehicle_col,
+        "'; filling a single placeholder (trip identities drive segmentation)."
+      )
+      raw_gps_df <- data.table::copy(raw_gps_df)
+      raw_gps_df[[vehicle_col]] <- "veh_1"
+    }
+  }
   cleaned <- g2g_clean_gps(
     raw_gps_df,
     projected = projected,
@@ -118,13 +143,28 @@ g2g_extract_trips <- function(
     )
   }
 
-  terminals <- normalize_coordinates(
-    trip_terminals_df,
-    projected = projected,
-    name = "trip_terminals_df"
-  )$dt
-  validate_required_columns(terminals, "terminal_id", "trip_terminals_df")
-  validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
+  have_terminals <- !is.null(terminals_data)
+  if (have_terminals) {
+    trip_terminals_df <- if (is.character(terminals_data) && length(terminals_data) == 1L) data.table::fread(terminals_data) else data.table::as.data.table(terminals_data)
+    terminals <- normalize_coordinates(
+      trip_terminals_df,
+      projected = projected,
+      name = "trip_terminals_df"
+    )$dt
+    validate_required_columns(terminals, "terminal_id", "trip_terminals_df")
+    validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
+  } else {
+    if (is.null(direction_col)) {
+      stop(
+        "'terminals_data' is required unless 'direction_col' is supplied.",
+        call. = FALSE
+      )
+    }
+    terminals <- data.table::data.table(terminal_id = character(0))
+  }
+  if (!is.null(direction_col)) {
+    validate_required_columns(cleaned, direction_col, "gps_data")
+  }
 
   if (nrow(cleaned) == 0L) {
     result <- set_backend(empty_trip_features(cleaned$vehicle_id), backend)
@@ -161,7 +201,8 @@ g2g_extract_trips <- function(
       terminals,
       trip_col,
       projected = projected,
-      session_gap = session_gap
+      session_gap = session_gap,
+      direction_col = direction_col
     )
   } else {
     trips <- extract_trips_r(
@@ -174,9 +215,15 @@ g2g_extract_trips <- function(
       session_gap = session_gap
     )
   }
+  direction_levels <- if (!is.null(direction_col)) {
+    sort(unique(as.character(stats::na.omit(cleaned[[direction_col]]))))
+  } else {
+    NULL
+  }
   trip_features <- extract_trip_features_r(
     trips,
-    unique(as.character(terminals$terminal_id))
+    unique(as.character(terminals$terminal_id)),
+    direction_levels = direction_levels
   )
   trip_features <- set_backend(trip_features, backend)
 
@@ -225,13 +272,22 @@ g2g_extract_trips <- function(
 #' @param trip_col Character. Optional name(s) of column(s) holding supplied
 #'   trip identities (e.g. \code{"trip_id"} from GTFS-Realtime Vehicle
 #'   Positions). When given, trips are segmented by those identities (fast
-#'   path) instead of inferred from terminal-buffer crossings; the first/last
-#'   ping of each segment is matched to the nearest terminal for direction
-#'   assignment. May be several columns that jointly identify a trip - e.g.
-#'   \code{c("route_id", "direction_id", "start_date", "start_time")}, the
-#'   GTFS-Realtime TripDescriptor, for feeds whose positions carry no
-#'   \code{trip_id}; they are combined into one identity. Default \code{NULL}
-#'   (spatial inference).
+#'   path) instead of inferred from terminal-buffer crossings. Without
+#'   \code{direction_col}, the first/last ping of each segment is matched to
+#'   the nearest terminal for direction assignment. May be several columns
+#'   that jointly identify a trip - e.g. \code{c("route_id", "direction_id",
+#'   "start_date", "start_time")}, the GTFS-Realtime TripDescriptor, for feeds
+#'   whose positions carry no \code{trip_id}; they are combined into one
+#'   identity. Default \code{NULL} (spatial inference).
+#' @param direction_col Character. Optional column giving each ping's travel
+#'   direction (e.g. GTFS-Realtime \code{"direction_id"}). Only used with
+#'   \code{trip_col}. When supplied, trip direction is taken from the data
+#'   rather than inferred from which of two terminals a trip started at, so
+#'   \code{terminals_data} becomes optional and routes that are not simple
+#'   two-terminal lines (short-turns, variants, one-way services) are handled.
+#'   For stop-time extraction, stops are grouped for matching by their
+#'   \code{direction} label, which must use the same values as
+#'   \code{direction_col}. Default \code{NULL}.
 #' @param session_gap Numeric. Successive observations of a vehicle further
 #'   apart than this many seconds start a new driving session; trips never
 #'   span sessions. This replaces the former calendar-date boundary, so
@@ -287,7 +343,7 @@ g2g_extract_trips <- function(
 #' @export
 g2g_extract_trips_and_stop_times <- function(
   gps_data,
-  terminals_data,
+  terminals_data = NULL,
   stops_data,
   terminals_buffer_radius,
   stops_buffer_radius,
@@ -302,6 +358,7 @@ g2g_extract_trips_and_stop_times <- function(
   time_col = "timestamp",
   tz = NULL,
   trip_col = NULL,
+  direction_col = NULL,
   session_gap = 4 * 3600,
   return_trajectory = FALSE
 ) {
@@ -317,13 +374,33 @@ g2g_extract_trips_and_stop_times <- function(
   if (isTRUE(projected) && is.null(projected_crs)) {
     stop("'projected_crs' is required when 'projected = TRUE'.", call. = FALSE)
   }
+  if (!is.null(direction_col) && is.null(trip_col)) {
+    stop(
+      "'direction_col' is only used with 'trip_col' (data-driven direction ",
+      "applies to the supplied-trip-identity fast path).",
+      call. = FALSE
+    )
+  }
   message(
     "Starting Pipeline for extracting Trip and Bus Stop Data using backend: ",
     backend
   )
 
   raw_gps_df <- if (is.character(gps_data) && length(gps_data) == 1L) data.table::fread(gps_data) else data.table::as.data.table(gps_data)
-  trip_terminals_df <- if (is.character(terminals_data) && length(terminals_data) == 1L) data.table::fread(terminals_data) else data.table::as.data.table(terminals_data)
+  # Some feeds (e.g. OVapi) leave vehicle_id empty. When trip identities are
+  # supplied, segmentation does not need a vehicle id, so fill a placeholder
+  # rather than dropping every row in g2g_clean_gps().
+  if (!is.null(trip_col)) {
+    if (!vehicle_col %in% names(raw_gps_df) || all(is.na(raw_gps_df[[vehicle_col]]))) {
+      message(
+        "[INFO] No usable '",
+        vehicle_col,
+        "'; filling a single placeholder (trip identities drive segmentation)."
+      )
+      raw_gps_df <- data.table::copy(raw_gps_df)
+      raw_gps_df[[vehicle_col]] <- "veh_1"
+    }
+  }
   stops_df <- if (is.character(stops_data) && length(stops_data) == 1L) data.table::fread(stops_data) else data.table::as.data.table(stops_data)
 
   cleaned <- g2g_clean_gps(
@@ -341,14 +418,41 @@ g2g_extract_trips_and_stop_times <- function(
     )
   }
 
-  terminals <- normalize_coordinates(
-    trip_terminals_df,
-    projected = projected,
-    name = "trip_terminals_df"
-  )$dt
-  validate_required_columns(terminals, "terminal_id", "trip_terminals_df")
-  validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
-  terminal_ids <- unique(as.character(terminals$terminal_id))
+  # Terminals are optional in data-driven direction mode (direction_col).
+  have_terminals <- !is.null(terminals_data)
+  if (have_terminals) {
+    trip_terminals_df <- if (is.character(terminals_data) && length(terminals_data) == 1L) data.table::fread(terminals_data) else data.table::as.data.table(terminals_data)
+    terminals <- normalize_coordinates(
+      trip_terminals_df,
+      projected = projected,
+      name = "trip_terminals_df"
+    )$dt
+    validate_required_columns(terminals, "terminal_id", "trip_terminals_df")
+    validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
+    terminal_ids <- unique(as.character(terminals$terminal_id))
+  } else {
+    if (is.null(direction_col)) {
+      stop(
+        "'terminals_data' is required unless 'direction_col' is supplied.",
+        call. = FALSE
+      )
+    }
+    terminals <- data.table::data.table(terminal_id = character(0))
+    terminal_ids <- character(0)
+  }
+
+  # Data-driven direction levels: shared vocabulary across supplied trip
+  # directions and stop direction labels, mapped to 1..K downstream.
+  direction_levels <- NULL
+  if (!is.null(direction_col)) {
+    validate_required_columns(cleaned, direction_col, "gps_data")
+    direction_levels <- sort(unique(as.character(stats::na.omit(
+      c(as.character(cleaned[[direction_col]]), as.character(stops_df$direction))
+    ))))
+    if (length(direction_levels) == 0L) {
+      stop("'direction_col' yielded no usable direction values.", call. = FALSE)
+    }
+  }
 
   stops <- normalize_coordinates(
     stops_df,
@@ -356,7 +460,9 @@ g2g_extract_trips_and_stop_times <- function(
     name = "stops_df"
   )$dt
   if (nrow(stops) > 0L) {
-    resolve_stop_directions(stops, terminal_ids, stop_direction_map)
+    resolve_stop_directions(
+      stops, terminal_ids, stop_direction_map, direction_levels = direction_levels
+    )
   } else {
     validate_required_columns(stops, c("stop_id", "direction"), "stops_df")
   }
@@ -399,7 +505,8 @@ g2g_extract_trips_and_stop_times <- function(
       terminals,
       trip_col,
       projected = projected,
-      session_gap = session_gap
+      session_gap = session_gap,
+      direction_col = direction_col
     )
   } else {
     trips <- extract_trips_r(
@@ -412,7 +519,11 @@ g2g_extract_trips_and_stop_times <- function(
       session_gap = session_gap
     )
   }
-  trip_features <- extract_trip_features_r(trips, terminal_ids)
+  trip_features <- extract_trip_features_r(
+    trips,
+    terminal_ids,
+    direction_levels = direction_levels
+  )
   trip_features <- set_backend(trip_features, backend)
 
   trajectory <- prepare_trajectory_r(
@@ -433,7 +544,8 @@ g2g_extract_trips_and_stop_times <- function(
     backend = backend,
     projected = projected,
     stop_direction_map = stop_direction_map,
-    terminal_ids = terminal_ids
+    terminal_ids = terminal_ids,
+    direction_levels = direction_levels
   )
 
   if ("bus_stop" %in% names(stop_times)) {

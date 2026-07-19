@@ -190,3 +190,73 @@ test_that("multi-column trip_col reports missing columns", {
     "not found in the GPS data: nope"
   )
 })
+
+test_that("direction_col drives direction; terminals optional; any topology", {
+  # A one-way (single-direction) service: one trip, no return leg, no terminals.
+  lat <- seq(7.290, 7.320, length.out = 5)
+  lon <- seq(80.630, 80.660, length.out = 5)
+  base <- as.POSIXct("2026-06-06 08:00:00", tz = "UTC")
+  gps <- data.frame(
+    vehicle_id = "b1",
+    latitude = lat,
+    longitude = lon,
+    timestamp = base + c(0, 120, 240, 360, 480),
+    speed = c(0, 15, 0, 15, 0),
+    trip_id = "T1",
+    direction_id = 0L
+  )
+  # stops labelled by the same direction values as direction_col (here "0")
+  stops <- data.frame(
+    stop_id = c("S1", "S2", "S3"),
+    latitude = lat[2:4],
+    longitude = lon[2:4],
+    direction = "0"
+  )
+
+  result <- suppressMessages(g2g_extract_trips_and_stop_times(
+    gps_data = gps,
+    terminals_data = NULL,          # <- optional now
+    stops_data = stops,
+    terminals_buffer_radius = 100,
+    stops_buffer_radius = 120,
+    stops_extended_buffer_radius = 200,
+    trip_col = "trip_id",
+    direction_col = "direction_id"
+  ))
+
+  expect_equal(nrow(result$trips), 1L)
+  expect_equal(result$trips$direction, 1L)          # single group -> 1
+  expect_equal(result$trips$provided_trip_id, "T1")
+  expect_true(nrow(result$stop_times) > 0L)
+  expect_true(all(result$stop_times$stop_id %in% c("S1", "S2", "S3")))
+})
+
+test_that("direction_col requires trip_col", {
+  gps <- data.frame(vehicle_id = "b1", latitude = 7.3, longitude = 80.6,
+                    timestamp = as.POSIXct("2026-06-06 08:00:00", tz = "UTC"),
+                    speed = 0, direction_id = 0L)
+  expect_error(
+    suppressMessages(g2g_extract_trips_and_stop_times(
+      gps_data = gps, stops_data = data.frame(stop_id="S1", latitude=7.3,
+      longitude=80.6, direction="0"), terminals_buffer_radius = 100,
+      stops_buffer_radius = 100, stops_extended_buffer_radius = 150,
+      direction_col = "direction_id"
+    )),
+    "only used with 'trip_col'"
+  )
+})
+
+test_that("no terminals and no direction_col errors", {
+  gps <- data.frame(vehicle_id = "b1", latitude = 7.3, longitude = 80.6,
+                    timestamp = as.POSIXct("2026-06-06 08:00:00", tz = "UTC"),
+                    speed = 0, trip_id = "T1")
+  expect_error(
+    suppressMessages(g2g_extract_trips_and_stop_times(
+      gps_data = gps, stops_data = data.frame(stop_id="S1", latitude=7.3,
+      longitude=80.6, direction="A"), terminals_buffer_radius = 100,
+      stops_buffer_radius = 100, stops_extended_buffer_radius = 150,
+      trip_col = "trip_id"
+    )),
+    "terminals_data' is required"
+  )
+})
