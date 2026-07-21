@@ -130,13 +130,44 @@ result$trips
 result$stop_times
 ```
 
-These are *inference tables*, not finished GTFS files: they use GTFS-style
-naming but carry no `route_id`, `service_id`, or `stop_sequence`, and all
-times are absolute `POSIXct` values (in the input timezone) rather than GTFS
-clock strings — so trips running past midnight stay unambiguous. Assembling
-them into a standard-compliant static feed (ID linkage, stop sequencing,
-`>24:00:00` time encoding) is the job of a downstream assembler such as
-`gtfsrt2static`.
+These are *inference tables*, not finished GTFS files: GTFS-style names, but
+no `route_id`, `service_id`, or `stop_sequence`, and times are absolute
+`POSIXct` values (input timezone) rather than GTFS clock strings — so trips
+running past midnight stay unambiguous.
+
+## From inference tables to a valid GTFS feed
+
+`gps2gtfs` stops at coordinate inference on purpose: `route_id`, `service_id`,
+and canonical stop identities cannot be inferred from GPS alone, so the package
+does not invent them. Turning the inference tables into a standard-compliant
+feed — deriving `stop_sequence`, attributing each trip to a service day,
+encoding `>24:00:00` clock strings, and linking or synthesizing IDs — is the
+job of the companion package
+[`gtfsrt2static`](https://github.com/e-kotov/gtfsrt2static) (a separate,
+optional install), which produces a feed the MobilityData `gtfs-validator`
+accepts:
+
+```{r assemble, eval = FALSE}
+# install.packages("pak"); pak::pak("e-kotov/gtfsrt2static")
+library(gtfsrt2static)
+
+events <- snapshot_from_stop_times(
+  result$stop_times,
+  trip_id_col = "provided_trip_id" # preserve official trip IDs when present
+)
+
+# Baseline mode: inherit official route/service/stop IDs from a planned feed.
+feed <- snapshot_assemble(events)
+
+# ...or baseline-free, synthesizing a compliant feed (strict = publish gate):
+# feed <- snapshot_scaffold(events, strict = TRUE)
+
+gtfsio::export_gtfs(feed, "realized_gtfs.zip") # gtfstools/tidytransit-ready
+```
+
+The chunk is not evaluated here because `gtfsrt2static` is a separate package;
+see its documentation for baseline vs. scaffold assembly and the strict-mode
+publish gate.
 
 ## Shapes: the geometry actually driven
 
