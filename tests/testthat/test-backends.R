@@ -88,6 +88,38 @@ test_that("available backends produce equivalent trip identities and stop sequen
   }
 })
 
+test_that("returned row order is a stable, backend-invariant contract", {
+  backends <- c(
+    if (is_rust_available()) "rust",
+    if (is_rcpp_available()) "rcpp",
+    if (requireNamespace("sf", quietly = TRUE)) "pure_r"
+  )
+  if (length(backends) < 2L) {
+    skip("Need at least two backends to compare row order.")
+  }
+  results <- lapply(backends, run_fixture)
+
+  # The documented order holds within each backend's own result.
+  for (result in results) {
+    expect_identical(
+      result$trips$trip_id,
+      result$trips[order(trip_id)]$trip_id
+    )
+    key <- result$stop_times[, .(trip_id, arrival_time, stop_id)]
+    expect_identical(key, key[order(trip_id, arrival_time, stop_id)])
+  }
+
+  # Every backend returns byte-identical whole tables in the same row order.
+  for (result in results[-1]) {
+    expect_equal(result$trips, results[[1]]$trips, ignore_attr = TRUE)
+    expect_equal(
+      result$stop_times,
+      results[[1]]$stop_times,
+      ignore_attr = TRUE
+    )
+  }
+})
+
 test_that("device pairing accepts character IDs and never crosses devices", {
   bus_stops <- c("A", "B", "A", "B")
   dates <- rep("2026-06-06", 4)
@@ -227,14 +259,17 @@ test_that("empty inputs and no matches return stable typed schemas", {
   expect_equal(nrow(result$trips), 0L)
   expect_equal(nrow(result$stop_times), 0L)
 
-  cleaned <- g2g_clean_gps(data.frame(
-    id = 1L,
-    vehicle_id = "bus-a",
-    latitude = 6.9,
-    longitude = 79.9,
-    timestamp = "2026-06-06 08:00:00",
-    speed = 0
-  ), tz = "UTC")
+  cleaned <- g2g_clean_gps(
+    data.frame(
+      id = 1L,
+      vehicle_id = "bus-a",
+      latitude = 6.9,
+      longitude = 79.9,
+      timestamp = "2026-06-06 08:00:00",
+      speed = 0
+    ),
+    tz = "UTC"
+  )
   far_terminals <- data.frame(
     terminal_id = c("A", "B"),
     latitude = c(7.5, 7.6),

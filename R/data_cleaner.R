@@ -190,13 +190,22 @@ g2g_clean_gps <- function(
   }
   validate_required_columns(dt, c("vehicle_id", "timestamp"), "raw GPS data")
 
+  # Coverage counters: how many rows each hygiene step removes, stamped as an
+  # attribute so the pipeline can consolidate them into a diagnostics table.
+  n_zero_coord <- 0L
+  n_missing_vehicle <- 0L
+  n_duplicate <- 0L
+
   # Remove rows with zero coordinates (GPS error sentinel)
+  n_before_zero <- nrow(dt)
   dt <- dt[latitude != 0 & longitude != 0]
+  n_zero_coord <- n_before_zero - nrow(dt)
 
   # Handle missing vehicle identifiers (common in real GTFS-RT feeds)
   vehicle_chr <- as.character(dt$vehicle_id)
   missing_vehicle <- is.na(vehicle_chr) | !nzchar(trimws(vehicle_chr))
   if (any(missing_vehicle)) {
+    n_missing_vehicle <- sum(missing_vehicle)
     if (!isTRUE(drop_missing_vehicle)) {
       stop(
         "raw GPS data 'vehicle_id' must not contain missing or empty identifiers.",
@@ -258,6 +267,7 @@ g2g_clean_gps <- function(
     n_before <- nrow(dt)
     dt <- unique(dt, by = c("vehicle_id", "timestamp"))
     n_dropped <- n_before - nrow(dt)
+    n_duplicate <- n_dropped
     if (n_dropped > 0L) {
       message(
         "[INFO] Removed ",
@@ -293,6 +303,14 @@ g2g_clean_gps <- function(
 
   # Store projected flag as attribute
   attr(dt, "projected") <- projected
+
+  # Per-reason cleaning drop counts for extraction diagnostics (metric names
+  # match the g2g_diagnostics schema).
+  attr(dt, "clean_drops") <- c(
+    pings_dropped_zero_coord = as.integer(n_zero_coord),
+    pings_dropped_missing_vehicle = as.integer(n_missing_vehicle),
+    pings_dropped_duplicate = as.integer(n_duplicate)
+  )
 
   return(dt)
 }

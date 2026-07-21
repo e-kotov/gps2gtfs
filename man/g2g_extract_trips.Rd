@@ -20,7 +20,8 @@ g2g_extract_trips(
   session_gap = 4 * 3600,
   segmentation = c("auto", "terminals", "layover"),
   layover_gap = 10 * 60,
-  layover_radius = 50
+  layover_radius = 50,
+  diagnostics_warn = getOption("gps2gtfs.diagnostics_warn", TRUE)
 )
 }
 \arguments{
@@ -109,12 +110,22 @@ real layover. Default 10 minutes (\code{10 * 60}).}
 as stationary while successive pings stay within this many meters of the
 dwell's first ping (anchoring absorbs GPS jitter while parked).
 Default 50.}
+
+\item{diagnostics_warn}{Logical. Emit a one-line \code{warning()} when the
+run drops coverage worth surfacing (pings with no usable trip identity,
+unmatched segments, stops out of range) so unattended or agent-driven
+pipelines notice silent loss. The full breakdown is always available via
+\code{\link{g2g_diagnostics}} regardless of this flag. Default
+\code{getOption("gps2gtfs.diagnostics_warn", TRUE)}.}
 }
 \value{
 A data.table containing extracted trip features. \code{start_time}
   and \code{end_time} are absolute \code{POSIXct} times in the timezone of
-  the input timestamps. See the "Inference tables, not GTFS files" section
-  of \code{\link{g2g_extract_trips_and_stop_times}}.
+  the input timestamps. Rows are returned in a stable, backend-invariant
+  order: sorted by the internal integer \code{trip_id}. The result carries
+  an \code{attr(., "diagnostics")} coverage table (see
+  \code{\link{g2g_diagnostics}}). See the "Inference tables, not GTFS files"
+  section of \code{\link{g2g_extract_trips_and_stop_times}}.
 }
 \description{
 Reads raw GPS and terminal CSV files, extracts trips, and optionally writes results to a CSV.

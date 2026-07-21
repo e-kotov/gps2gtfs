@@ -26,7 +26,8 @@ g2g_extract_trips_and_stop_times(
   segmentation = c("auto", "terminals", "layover"),
   layover_gap = 10 * 60,
   layover_radius = 50,
-  return_trajectory = FALSE
+  return_trajectory = FALSE,
+  diagnostics_warn = getOption("gps2gtfs.diagnostics_warn", TRUE)
 )
 }
 \arguments{
@@ -134,6 +135,13 @@ Default 50.}
 (cleaned GPS records with assigned \code{trip_id} and \code{direction})
 as a \code{trajectory} element — the input for
 \code{\link{g2g_shapes_from_trips}}. Default \code{FALSE}.}
+
+\item{diagnostics_warn}{Logical. Emit a one-line \code{warning()} when the
+run drops coverage worth surfacing (pings with no usable trip identity,
+unmatched segments, stops out of range) so unattended or agent-driven
+pipelines notice silent loss. The full breakdown is always available via
+\code{\link{g2g_diagnostics}} regardless of this flag. Default
+\code{getOption("gps2gtfs.diagnostics_warn", TRUE)}.}
 }
 \value{
 A list containing two data.tables: \code{trips} and
@@ -142,6 +150,15 @@ A list containing two data.tables: \code{trips} and
   \code{end_time}, \code{arrival_time}, \code{departure_time}) are absolute
   \code{POSIXct} values in the timezone of the input timestamps — never
   clock strings, so trips running past midnight stay unambiguous.
+
+  Row order is a stable, backend-invariant contract: \code{trips} are
+  ordered by the internal integer \code{trip_id}, and \code{stop_times} by
+  \code{(trip_id, arrival_time, stop_id)}. The three backends (Rust, Rcpp,
+  pure R) return identical row order for identical input, so summaries built
+  on the result are reproducible regardless of backend or parallelism.
+
+  The result also carries an \code{attr(., "diagnostics")} coverage table
+  (see \code{\link{g2g_diagnostics}}).
 }
 \description{
 Reads raw GPS, terminal, and stop CSV files, extracts trips and stop times, and optionally writes results.

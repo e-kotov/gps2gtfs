@@ -165,6 +165,7 @@ extract_trips_from_ids_r <- function(
     dt[, rt_trip_value := joined]
   }
   seg_dt <- dt[!is.na(rt_trip_value) & nzchar(trimws(rt_trip_value))]
+  n_no_identity <- nrow(dt) - nrow(seg_dt)
   if (nrow(seg_dt) == 0L) {
     message(
       "[INFO] Column '",
@@ -236,6 +237,11 @@ extract_trips_from_ids_r <- function(
   # can preserve it. extract_trip_features_r() surfaces it as
   # provided_trip_id.
   bounds[, seg_n := NULL]
+  # Segment-drop counts for extraction diagnostics (consumed by the pipeline).
+  attr(bounds, "seg_drops") <- c(
+    rows_dropped_no_trip_identity = as.integer(n_no_identity),
+    segments_dropped_single_ping = as.integer(n_single)
+  )
   bounds[]
 }
 
@@ -445,6 +451,11 @@ extract_trips_layover_r <- function(
       "seg_runs"
     ) := NULL
   ]
+  # Segment-drop counts for extraction diagnostics (consumed by the pipeline).
+  attr(bounds, "seg_drops") <- c(
+    segments_dropped_single_ping = as.integer(n_single),
+    segments_dropped_stationary = as.integer(n_stationary)
+  )
   bounds[]
 }
 
