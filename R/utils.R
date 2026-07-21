@@ -37,6 +37,59 @@ validate_session_gap <- function(x) {
   }
 }
 
+validate_layover_gap <- function(x) {
+  if (
+    length(x) != 1L || !is.numeric(x) || is.na(x) || !is.finite(x) || x <= 0
+  ) {
+    stop("'layover_gap' must be one positive finite number of seconds.", call. = FALSE)
+  }
+}
+
+validate_layover_radius <- function(x) {
+  if (
+    length(x) != 1L || !is.numeric(x) || is.na(x) || !is.finite(x) || x <= 0
+  ) {
+    stop("'layover_radius' must be one positive finite number of meters.", call. = FALSE)
+  }
+}
+
+# Single synthetic direction level used by layover segmentation (v1 emits one
+# direction group; heading-based inference is a planned follow-up). Internal
+# only: output tables carry the mapped integer direction (always 1L).
+layover_direction_level <- "layover"
+
+resolve_segmentation <- function(segmentation, trip_col, have_terminals) {
+  segmentation <- match.arg(segmentation, c("auto", "terminals", "layover"))
+  if (!is.null(trip_col)) {
+    if (segmentation != "auto") {
+      stop(
+        "'segmentation' selects the raw-GPS spatial segmenter; it is not ",
+        "used with 'trip_col' (supplied trip identities drive segmentation).",
+        call. = FALSE
+      )
+    }
+    return("fast")
+  }
+  if (segmentation == "auto") {
+    if (have_terminals) {
+      return("terminals")
+    }
+    message(
+      "[INFO] No 'terminals_data' and no 'trip_col'; segmenting trips at ",
+      "layovers (dwells longer than 'layover_gap')."
+    )
+    return("layover")
+  }
+  if (segmentation == "terminals" && !have_terminals) {
+    stop(
+      "'terminals_data' is required unless 'direction_col' is supplied or ",
+      "segmentation = \"layover\".",
+      call. = FALSE
+    )
+  }
+  segmentation
+}
+
 validate_projected_crs <- function(projected_crs) {
   if (
     !is.null(projected_crs) &&

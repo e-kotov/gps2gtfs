@@ -24,7 +24,11 @@ is_rust_available <- function() {
 #'
 #' @param gps_data A data.frame or path to the raw GPS CSV.
 #' @param terminals_data A data.frame or path to the terminal coordinates CSV.
-#' @param terminals_buffer_radius Numeric. Buffer radius for terminals (in meters).
+#'   Optional (\code{NULL}) with \code{segmentation = "layover"} or with
+#'   \code{direction_col}; required for terminal-buffer segmentation.
+#' @param terminals_buffer_radius Numeric. Buffer radius for terminals (in
+#'   meters). Only consumed by terminal-buffer segmentation; may be omitted
+#'   otherwise.
 #' @param output_path Character. Optional path to write output trip features as CSV. Default is \code{NULL} (no file written).
 #' @param projected_crs Numeric. The EPSG code of a projected coordinate system
 #'   used for metric distance calculations. Required when
@@ -70,6 +74,24 @@ is_rust_available <- function() {
 #'   overnight trips crossing midnight stay intact while overnight parking
 #'   still separates one day's operations from the next. Default 4 hours
 #'   (\code{4 * 3600}).
+#' @param segmentation Character. How the raw-GPS spatial path cuts trips when
+#'   no \code{trip_col} is supplied: \code{"terminals"} (classic two-terminal
+#'   buffer model), \code{"layover"} (cut wherever the vehicle dwells longer
+#'   than \code{layover_gap}, anywhere on the route - handles short-turn,
+#'   loop, and multi-branch services; all trips share a single direction
+#'   group), or \code{"auto"} (default: \code{"terminals"} when
+#'   \code{terminals_data} is given, \code{"layover"} otherwise). Not used
+#'   with \code{trip_col}.
+#' @param layover_gap Numeric. Layover segmentation only: dwells longer than
+#'   this many seconds bound trips - whether a silent gap between successive
+#'   pings or a stationary spell (pings present but staying within
+#'   \code{layover_radius}). Mode-dependent: must exceed the feed's ping
+#'   interval and normal in-service stop dwell, and stay below the shortest
+#'   real layover. Default 10 minutes (\code{10 * 60}).
+#' @param layover_radius Numeric. Layover segmentation only: a vehicle counts
+#'   as stationary while successive pings stay within this many meters of the
+#'   dwell's first ping (anchoring absorbs GPS jitter while parked).
+#'   Default 50.
 #' @return A data.table containing extracted trip features. \code{start_time}
 #'   and \code{end_time} are absolute \code{POSIXct} times in the timezone of
 #'   the input timestamps. See the "Inference tables, not GTFS files" section
@@ -89,8 +111,8 @@ is_rust_available <- function() {
 #' @export
 g2g_extract_trips <- function(
   gps_data,
-  terminals_data,
-  terminals_buffer_radius,
+  terminals_data = NULL,
+  terminals_buffer_radius = NULL,
   output_path = NULL,
   projected_crs = NULL,
   backend = "auto",
@@ -100,18 +122,38 @@ g2g_extract_trips <- function(
   tz = NULL,
   trip_col = NULL,
   direction_col = NULL,
-  session_gap = 4 * 3600
+  session_gap = 4 * 3600,
+  segmentation = c("auto", "terminals", "layover"),
+  layover_gap = 10 * 60,
+  layover_radius = 50
 ) {
   backend <- resolve_backend(backend)
-  validate_positive_radius(terminals_buffer_radius, "terminals_buffer_radius")
   validate_projected_crs(projected_crs)
   validate_session_gap(session_gap)
+  validate_layover_gap(layover_gap)
+  validate_layover_radius(layover_radius)
   if (isTRUE(projected) && is.null(projected_crs)) {
     stop("'projected_crs' is required when 'projected = TRUE'.", call. = FALSE)
   }
   if (!is.null(direction_col) && is.null(trip_col)) {
     stop(
       "'direction_col' is only used with 'trip_col'.",
+      call. = FALSE
+    )
+  }
+  seg_mode <- resolve_segmentation(segmentation, trip_col, !is.null(terminals_data))
+  # The terminal buffer radius is only consumed by terminal-buffer
+  # segmentation; other modes may omit it.
+  if (seg_mode == "terminals" || !is.null(terminals_buffer_radius)) {
+    validate_positive_radius(terminals_buffer_radius, "terminals_buffer_radius")
+  }
+  if (seg_mode == "layover" && layover_gap >= session_gap) {
+    warning(
+      "'layover_gap' (",
+      layover_gap,
+      "s) is not smaller than 'session_gap' (",
+      session_gap,
+      "s); layover cuts are subsumed by session cuts.",
       call. = FALSE
     )
   }
@@ -154,7 +196,7 @@ g2g_extract_trips <- function(
     validate_required_columns(terminals, "terminal_id", "trip_terminals_df")
     validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
   } else {
-    if (is.null(direction_col)) {
+    if (seg_mode == "fast" && is.null(direction_col)) {
       stop(
         "'terminals_data' is required unless 'direction_col' is supplied.",
         call. = FALSE
@@ -190,7 +232,7 @@ g2g_extract_trips <- function(
     )
   }
 
-  if (!is.null(trip_col)) {
+  if (seg_mode == "fast") {
     message(
       "[INFO] Using supplied trip identities from column(s) '",
       paste(trip_col, collapse = "', '"),
@@ -204,6 +246,15 @@ g2g_extract_trips <- function(
       session_gap = session_gap,
       direction_col = direction_col
     )
+  } else if (seg_mode == "layover") {
+    trips <- extract_trips_layover_r(
+      cleaned,
+      terminals,
+      layover_gap = layover_gap,
+      layover_radius = layover_radius,
+      session_gap = session_gap,
+      projected = projected
+    )
   } else {
     trips <- extract_trips_r(
       cleaned,
@@ -215,7 +266,9 @@ g2g_extract_trips <- function(
       session_gap = session_gap
     )
   }
-  direction_levels <- if (!is.null(direction_col)) {
+  direction_levels <- if (seg_mode == "layover") {
+    layover_direction_level
+  } else if (!is.null(direction_col)) {
     sort(unique(as.character(stats::na.omit(cleaned[[direction_col]]))))
   } else {
     NULL
@@ -242,8 +295,15 @@ g2g_extract_trips <- function(
 #'
 #' @param gps_data A data.frame or path to the raw GPS CSV.
 #' @param terminals_data A data.frame or path to the terminal coordinates CSV.
+#'   Optional (\code{NULL}) with \code{segmentation = "layover"} or with
+#'   \code{direction_col}; required for terminal-buffer segmentation.
 #' @param stops_data A data.frame or path to the bus stops coordinates CSV.
-#' @param terminals_buffer_radius Numeric. Buffer radius for terminals (in meters).
+#'   Its \code{direction} column groups stops for matching; with layover
+#'   segmentation the column is optional and any labels are ignored (all
+#'   stops match all trips).
+#' @param terminals_buffer_radius Numeric. Buffer radius for terminals (in
+#'   meters). Only consumed by terminal-buffer segmentation; may be omitted
+#'   otherwise.
 #' @param stops_buffer_radius Numeric. Buffer radius for bus stops (in meters).
 #' @param stops_extended_buffer_radius Numeric. Extended buffer radius for bus stops (in meters).
 #' @param output_trips_path Character. Optional path to write output trip features as CSV. Default is \code{NULL} (no file written).
@@ -294,6 +354,24 @@ g2g_extract_trips <- function(
 #'   overnight trips crossing midnight stay intact while overnight parking
 #'   still separates one day's operations from the next. Default 4 hours
 #'   (\code{4 * 3600}).
+#' @param segmentation Character. How the raw-GPS spatial path cuts trips when
+#'   no \code{trip_col} is supplied: \code{"terminals"} (classic two-terminal
+#'   buffer model), \code{"layover"} (cut wherever the vehicle dwells longer
+#'   than \code{layover_gap}, anywhere on the route - handles short-turn,
+#'   loop, and multi-branch services; all trips share a single direction
+#'   group), or \code{"auto"} (default: \code{"terminals"} when
+#'   \code{terminals_data} is given, \code{"layover"} otherwise). Not used
+#'   with \code{trip_col}.
+#' @param layover_gap Numeric. Layover segmentation only: dwells longer than
+#'   this many seconds bound trips - whether a silent gap between successive
+#'   pings or a stationary spell (pings present but staying within
+#'   \code{layover_radius}). Mode-dependent: must exceed the feed's ping
+#'   interval and normal in-service stop dwell, and stay below the shortest
+#'   real layover. Default 10 minutes (\code{10 * 60}).
+#' @param layover_radius Numeric. Layover segmentation only: a vehicle counts
+#'   as stationary while successive pings stay within this many meters of the
+#'   dwell's first ping (anchoring absorbs GPS jitter while parked).
+#'   Default 50.
 #' @param return_trajectory Logical. Also return the ping-level trajectory
 #'   (cleaned GPS records with assigned \code{trip_id} and \code{direction})
 #'   as a \code{trajectory} element — the input for
@@ -345,7 +423,7 @@ g2g_extract_trips_and_stop_times <- function(
   gps_data,
   terminals_data = NULL,
   stops_data,
-  terminals_buffer_radius,
+  terminals_buffer_radius = NULL,
   stops_buffer_radius,
   stops_extended_buffer_radius,
   output_trips_path = NULL,
@@ -360,10 +438,12 @@ g2g_extract_trips_and_stop_times <- function(
   trip_col = NULL,
   direction_col = NULL,
   session_gap = 4 * 3600,
+  segmentation = c("auto", "terminals", "layover"),
+  layover_gap = 10 * 60,
+  layover_radius = 50,
   return_trajectory = FALSE
 ) {
   backend <- resolve_backend(backend)
-  validate_positive_radius(terminals_buffer_radius, "terminals_buffer_radius")
   validate_positive_radius(stops_buffer_radius, "stops_buffer_radius")
   validate_positive_radius(
     stops_extended_buffer_radius,
@@ -371,6 +451,8 @@ g2g_extract_trips_and_stop_times <- function(
   )
   validate_projected_crs(projected_crs)
   validate_session_gap(session_gap)
+  validate_layover_gap(layover_gap)
+  validate_layover_radius(layover_radius)
   if (isTRUE(projected) && is.null(projected_crs)) {
     stop("'projected_crs' is required when 'projected = TRUE'.", call. = FALSE)
   }
@@ -379,6 +461,27 @@ g2g_extract_trips_and_stop_times <- function(
       "'direction_col' is only used with 'trip_col' (data-driven direction ",
       "applies to the supplied-trip-identity fast path).",
       call. = FALSE
+    )
+  }
+  seg_mode <- resolve_segmentation(segmentation, trip_col, !is.null(terminals_data))
+  # The terminal buffer radius is only consumed by terminal-buffer
+  # segmentation; other modes may omit it.
+  if (seg_mode == "terminals" || !is.null(terminals_buffer_radius)) {
+    validate_positive_radius(terminals_buffer_radius, "terminals_buffer_radius")
+  }
+  if (seg_mode == "layover" && layover_gap >= session_gap) {
+    warning(
+      "'layover_gap' (",
+      layover_gap,
+      "s) is not smaller than 'session_gap' (",
+      session_gap,
+      "s); layover cuts are subsumed by session cuts.",
+      call. = FALSE
+    )
+  }
+  if (seg_mode == "layover" && !is.null(stop_direction_map)) {
+    message(
+      "[INFO] 'stop_direction_map' is not used with layover segmentation."
     )
   }
   message(
@@ -431,7 +534,7 @@ g2g_extract_trips_and_stop_times <- function(
     validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
     terminal_ids <- unique(as.character(terminals$terminal_id))
   } else {
-    if (is.null(direction_col)) {
+    if (seg_mode == "fast" && is.null(direction_col)) {
       stop(
         "'terminals_data' is required unless 'direction_col' is supplied.",
         call. = FALSE
@@ -443,8 +546,12 @@ g2g_extract_trips_and_stop_times <- function(
 
   # Data-driven direction levels: shared vocabulary across supplied trip
   # directions and stop direction labels, mapped to 1..K downstream.
+  # Layover segmentation infers no direction; every trip and stop shares one
+  # synthetic level (mapped to direction 1L downstream).
   direction_levels <- NULL
-  if (!is.null(direction_col)) {
+  if (seg_mode == "layover") {
+    direction_levels <- layover_direction_level
+  } else if (!is.null(direction_col)) {
     validate_required_columns(cleaned, direction_col, "gps_data")
     direction_levels <- sort(unique(as.character(stats::na.omit(
       c(as.character(cleaned[[direction_col]]), as.character(stops_df$direction))
@@ -459,6 +566,18 @@ g2g_extract_trips_and_stop_times <- function(
     projected = projected,
     name = "stops_df"
   )$dt
+  if (seg_mode == "layover") {
+    # Single direction group: the stop 'direction' column becomes optional,
+    # and any supplied labels are ignored so all stops match all trips.
+    stops <- data.table::copy(stops)
+    if ("direction" %in% names(stops) && any(!is.na(stops$direction))) {
+      message(
+        "[INFO] Layover segmentation uses a single direction group; stop ",
+        "'direction' labels are ignored."
+      )
+    }
+    stops[, direction := layover_direction_level]
+  }
   if (nrow(stops) > 0L) {
     resolve_stop_directions(
       stops, terminal_ids, stop_direction_map, direction_levels = direction_levels
@@ -494,7 +613,7 @@ g2g_extract_trips_and_stop_times <- function(
     )
   }
 
-  if (!is.null(trip_col)) {
+  if (seg_mode == "fast") {
     message(
       "[INFO] Using supplied trip identities from column(s) '",
       paste(trip_col, collapse = "', '"),
@@ -507,6 +626,15 @@ g2g_extract_trips_and_stop_times <- function(
       projected = projected,
       session_gap = session_gap,
       direction_col = direction_col
+    )
+  } else if (seg_mode == "layover") {
+    trips <- extract_trips_layover_r(
+      cleaned,
+      terminals,
+      layover_gap = layover_gap,
+      layover_radius = layover_radius,
+      session_gap = session_gap,
+      projected = projected
     )
   } else {
     trips <- extract_trips_r(

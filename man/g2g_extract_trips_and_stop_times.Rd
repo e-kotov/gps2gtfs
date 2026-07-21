@@ -8,7 +8,7 @@ g2g_extract_trips_and_stop_times(
   gps_data,
   terminals_data = NULL,
   stops_data,
-  terminals_buffer_radius,
+  terminals_buffer_radius = NULL,
   stops_buffer_radius,
   stops_extended_buffer_radius,
   output_trips_path = NULL,
@@ -23,17 +23,27 @@ g2g_extract_trips_and_stop_times(
   trip_col = NULL,
   direction_col = NULL,
   session_gap = 4 * 3600,
+  segmentation = c("auto", "terminals", "layover"),
+  layover_gap = 10 * 60,
+  layover_radius = 50,
   return_trajectory = FALSE
 )
 }
 \arguments{
 \item{gps_data}{A data.frame or path to the raw GPS CSV.}
 
-\item{terminals_data}{A data.frame or path to the terminal coordinates CSV.}
+\item{terminals_data}{A data.frame or path to the terminal coordinates CSV.
+Optional (\code{NULL}) with \code{segmentation = "layover"} or with
+\code{direction_col}; required for terminal-buffer segmentation.}
 
-\item{stops_data}{A data.frame or path to the bus stops coordinates CSV.}
+\item{stops_data}{A data.frame or path to the bus stops coordinates CSV.
+Its \code{direction} column groups stops for matching; with layover
+segmentation the column is optional and any labels are ignored (all
+stops match all trips).}
 
-\item{terminals_buffer_radius}{Numeric. Buffer radius for terminals (in meters).}
+\item{terminals_buffer_radius}{Numeric. Buffer radius for terminals (in
+meters). Only consumed by terminal-buffer segmentation; may be omitted
+otherwise.}
 
 \item{stops_buffer_radius}{Numeric. Buffer radius for bus stops (in meters).}
 
@@ -98,6 +108,27 @@ span sessions. This replaces the former calendar-date boundary, so
 overnight trips crossing midnight stay intact while overnight parking
 still separates one day's operations from the next. Default 4 hours
 (\code{4 * 3600}).}
+
+\item{segmentation}{Character. How the raw-GPS spatial path cuts trips when
+no \code{trip_col} is supplied: \code{"terminals"} (classic two-terminal
+buffer model), \code{"layover"} (cut wherever the vehicle dwells longer
+than \code{layover_gap}, anywhere on the route - handles short-turn,
+loop, and multi-branch services; all trips share a single direction
+group), or \code{"auto"} (default: \code{"terminals"} when
+\code{terminals_data} is given, \code{"layover"} otherwise). Not used
+with \code{trip_col}.}
+
+\item{layover_gap}{Numeric. Layover segmentation only: dwells longer than
+this many seconds bound trips - whether a silent gap between successive
+pings or a stationary spell (pings present but staying within
+\code{layover_radius}). Mode-dependent: must exceed the feed's ping
+interval and normal in-service stop dwell, and stay below the shortest
+real layover. Default 10 minutes (\code{10 * 60}).}
+
+\item{layover_radius}{Numeric. Layover segmentation only: a vehicle counts
+as stationary while successive pings stay within this many meters of the
+dwell's first ping (anchoring absorbs GPS jitter while parked).
+Default 50.}
 
 \item{return_trajectory}{Logical. Also return the ping-level trajectory
 (cleaned GPS records with assigned \code{trip_id} and \code{direction})
