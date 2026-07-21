@@ -153,10 +153,10 @@ A list containing two data.tables: \code{trips} and
 
   Row order is a stable, backend-invariant contract: \code{trips} are
   ordered by the internal integer \code{trip_id}, and \code{stop_times} by
-  \code{(trip_id, arrival_time, stop_id, departure_time)}. Any rows still
-  tied after those keys are identical in every column, so the order is fully
-  determined. The three backends (Rust, Rcpp, pure R) return identical row
-  order for identical input, so summaries built on the result are
+  \code{(trip_id, arrival_time, stop_id, departure_time)} with every
+  remaining column appended as a final tie-breaker. The sort is therefore
+  total, so the three backends (Rust, Rcpp, pure R) return identical row
+  order for identical input and summaries built on the result are
   reproducible regardless of backend or parallelism.
 
   The result also carries an \code{attr(., "diagnostics")} coverage table
