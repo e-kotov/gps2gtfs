@@ -1,5 +1,28 @@
 # gps2gtfs 0.2.0
 
+## New features (raw-GPS layover segmentation)
+
+* New `segmentation` argument in `g2g_extract_trips()` and
+  `g2g_extract_trips_and_stop_times()` with a `"layover"` mode for raw GPS
+  without terminals or trip identities: trips are cut wherever the vehicle
+  dwells longer than the new `layover_gap` argument (default 10 minutes) —
+  whether a silent gap between pings or a stationary spell within the new
+  `layover_radius` (default 50 m) — anywhere on the route, not only at named
+  terminals. This handles short-turn, loop, and multi-branch services that
+  the two-terminal model cannot segment; all trips share a single direction
+  group (heading-based direction inference is a planned follow-up).
+  `segmentation = "auto"` (the default) picks `"terminals"` when
+  `terminals_data` is given and `"layover"` otherwise — note the previously
+  erroring combination `trip_col = NULL` + `terminals_data = NULL` now runs
+  in layover mode instead of failing. `terminals_data` and
+  `terminals_buffer_radius` are only required for terminal-buffer
+  segmentation, and the stops `direction` column is optional (and ignored)
+  in layover mode. The classic two-terminal behavior is byte-for-byte
+  unchanged when not selected. Tune `layover_gap` above the feed's silent
+  dropout length: on the Sri Lanka reference data (mid-trip dropouts up to
+  15 min) `layover_gap = 1800` recovers 97.9% of terminal-model trips with
+  no terminal list at all (see `REAL_DATA_TESTING.md`).
+
 ## New features (baseline static GTFS + GTFS-RT trip identities)
 
 * New `g2g_terminals_from_gtfs()` and `g2g_stops_from_gtfs()` derive the

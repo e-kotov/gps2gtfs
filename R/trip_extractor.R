@@ -239,6 +239,215 @@ extract_trips_from_ids_r <- function(
   bounds[]
 }
 
+#' Dwell Run IDs via Greedy Anchor Clustering
+#'
+#' Assigns consecutive pings to "dwell runs": a run starts at an anchor ping
+#' and a ping joins the current run while it stays within \code{radius}
+#' meters of that anchor; the first ping beyond the radius becomes the anchor
+#' of a new run. Anchoring on the run's first ping (rather than comparing
+#' consecutive displacements) absorbs GPS jitter while a vehicle is parked.
+#'
+#' @param lat,lon Numeric coordinate vectors, time-ordered.
+#' @param radius Numeric. Stationarity radius in meters.
+#' @param projected Logical. Euclidean distance when TRUE, haversine otherwise.
+#' @return Integer vector of 1-based run ids, one per ping.
+#' @noRd
+dwell_run_ids_r <- function(lat, lon, radius, projected) {
+  n <- length(lat)
+  if (n == 0L) {
+    return(integer(0))
+  }
+  run <- integer(n)
+  run[1L] <- 1L
+  current <- 1L
+  a_lat <- lat[1L]
+  a_lon <- lon[1L]
+  for (i in seq_len(n)[-1L]) {
+    d <- if (projected) {
+      sqrt((lat[i] - a_lat)^2 + (lon[i] - a_lon)^2)
+    } else {
+      haversine_m_r(lat[i], lon[i], a_lat, a_lon)
+    }
+    if (d > radius) {
+      current <- current + 1L
+      a_lat <- lat[i]
+      a_lon <- lon[i]
+    }
+    run[i] <- current
+  }
+  run
+}
+
+#' Extract Trips by Layover Segmentation
+#'
+#' Segments raw GPS into trips without terminals or supplied trip identities:
+#' a trip boundary is a layover, i.e. a dwell longer than \code{layover_gap}
+#' anywhere along the route. Two boundary signals are combined per vehicle
+#' and driving session: a silent gap between successive pings exceeding
+#' \code{layover_gap}, and a stationary dwell (pings staying within
+#' \code{layover_radius} of an anchor for longer than \code{layover_gap}).
+#' The previous trip ends at the dwell's first ping (arrival) and the next
+#' trip starts at its last ping (departure); interior dwell pings belong to
+#' no trip. This handles short-turn, loop, and multi-branch services that the
+#' two-terminal model cannot; direction is a single group in this mode.
+#'
+#' @param cleaned_gps_dt A data.table of cleaned GPS data.
+#' @param trip_terminals_df Optional terminal coordinates with
+#'   \code{terminal_id}; used only to label trip endpoints with the nearest
+#'   terminal (cosmetic - direction never derives from it in this mode).
+#' @param layover_gap Numeric. Dwells longer than this many seconds cut trips.
+#' @param layover_radius Numeric. Stationarity radius in meters.
+#' @param session_gap Numeric. Driving-session bound, as elsewhere.
+#' @return A data.table shaped like the output of \code{extract_trips_r}:
+#'   two rows (start/end ping) per trip with \code{bus_stop}, integer
+#'   \code{trip_id}, and \code{rt_direction} set to the single layover
+#'   direction level.
+#' @noRd
+extract_trips_layover_r <- function(
+  cleaned_gps_dt,
+  trip_terminals_df = NULL,
+  layover_gap = 10 * 60,
+  layover_radius = 50,
+  session_gap = 4 * 3600,
+  projected = NULL
+) {
+  if (is.null(projected)) {
+    projected <- attr(cleaned_gps_dt, "projected")
+    if (is.null(projected)) {
+      projected <- FALSE
+    }
+  }
+  have_terminals <- !is.null(trip_terminals_df) &&
+    nrow(data.table::as.data.table(trip_terminals_df)) > 0L
+  if (have_terminals) {
+    terminals <- normalize_coordinates(
+      trip_terminals_df,
+      projected = projected,
+      name = "trip_terminals_df"
+    )$dt
+    validate_required_columns(terminals, "terminal_id", "trip_terminals_df")
+    validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
+  }
+
+  empty_result <- function() {
+    result <- data.table::copy(cleaned_gps_dt[0])
+    result[, bus_stop := character()]
+    result[, trip_id := integer()]
+    result[, rt_direction := character()]
+    result
+  }
+  if (nrow(cleaned_gps_dt) == 0L) {
+    return(empty_result())
+  }
+
+  seg_dt <- data.table::copy(cleaned_gps_dt)
+  data.table::setkeyv(seg_dt, c("vehicle_id", "timestamp"))
+  # Layover cuts compose with the coarser session cut: sessions first, then
+  # layovers within each session.
+  seg_dt[,
+    trip_session := cumsum(c(0, diff(as.numeric(timestamp))) > session_gap),
+    by = vehicle_id
+  ]
+  seg_dt[,
+    dwell_run := dwell_run_ids_r(
+      as.double(latitude),
+      as.double(longitude),
+      layover_radius,
+      projected
+    ),
+    by = .(vehicle_id, trip_session)
+  ]
+  seg_dt[,
+    `:=`(
+      run_n = .N,
+      run_span = as.numeric(timestamp[.N]) - as.numeric(timestamp[1L]),
+      run_pos = seq_len(.N)
+    ),
+    by = .(vehicle_id, trip_session, dwell_run)
+  ]
+  # Short stationary runs (traffic lights, in-service stops) never cut.
+  seg_dt[, is_layover_run := run_n >= 2L & run_span > layover_gap]
+
+  # A new segment starts at a ping preceded by a silent layover, or at the
+  # departure ping of a stationary layover.
+  seg_dt[,
+    gap_prev := c(0, diff(as.numeric(timestamp))),
+    by = .(vehicle_id, trip_session)
+  ]
+  seg_dt[,
+    new_seg := (gap_prev > layover_gap) | (is_layover_run & run_pos == run_n)
+  ]
+  seg_dt[, seg := cumsum(new_seg), by = .(vehicle_id, trip_session)]
+  # Interior dwell pings (between arrival and departure) belong to no trip.
+  seg_dt <- seg_dt[!(is_layover_run & run_pos > 1L & run_pos < run_n)]
+
+  seg_dt[, trip_id := data.table::rleid(vehicle_id, trip_session, seg)]
+  seg_dt[,
+    `:=`(seg_n = .N, seg_runs = data.table::uniqueN(dwell_run)),
+    by = trip_id
+  ]
+
+  n_single <- seg_dt[seg_n < 2L, data.table::uniqueN(trip_id)]
+  if (n_single > 0L) {
+    message(
+      "[INFO] Skipped ",
+      n_single,
+      " single-ping trip segment(s) from layover segmentation."
+    )
+  }
+  # A segment confined to one dwell run never moved beyond layover_radius
+  # (e.g. a vehicle parked and pinging until a session gap): not a trip.
+  n_stationary <- seg_dt[
+    seg_n >= 2L & seg_runs < 2L,
+    data.table::uniqueN(trip_id)
+  ]
+  if (n_stationary > 0L) {
+    message(
+      "[INFO] Skipped ",
+      n_stationary,
+      " stationary (no-movement) segment(s) from layover segmentation."
+    )
+  }
+  seg_dt <- seg_dt[seg_n >= 2L & seg_runs >= 2L]
+  if (nrow(seg_dt) == 0L) {
+    return(empty_result())
+  }
+
+  # Renumber to consecutive integers, then keep first/last ping per trip
+  seg_dt[, trip_id := data.table::rleid(trip_id)]
+  bounds <- seg_dt[, .SD[c(1L, .N)], by = trip_id]
+
+  if (have_terminals) {
+    bounds[,
+      bus_stop := nearest_terminal_id(
+        as.double(latitude),
+        as.double(longitude),
+        terminals,
+        projected
+      )
+    ]
+  } else {
+    bounds[, bus_stop := NA_character_]
+  }
+  bounds[, rt_direction := layover_direction_level]
+  bounds[,
+    c(
+      "trip_session",
+      "dwell_run",
+      "run_n",
+      "run_span",
+      "run_pos",
+      "is_layover_run",
+      "gap_prev",
+      "new_seg",
+      "seg",
+      "seg_n",
+      "seg_runs"
+    ) := NULL
+  ]
+  bounds[]
+}
+
 #' Extract Trips from Cleaned GPS Data
 #'
 #' Converts GPS data and terminal coordinates to spatial objects, performs a spatial join
