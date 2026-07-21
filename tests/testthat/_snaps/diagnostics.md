@@ -3,7 +3,7 @@
     Code
       cat(diagnostics_warning_message(diag))
     Output
-      gps2gtfs extraction lost coverage: dropped 714 (of 2,167 input pings), kept 6 trips. Largest: pings_dropped_not_in_trip (686), pings_dropped_zero_coord (28). Inspect the full coverage table with g2g_diagnostics(result) (also attr(result, "diagnostics")). Silence with diagnostics_warn = FALSE or options(gps2gtfs.diagnostics_warn = FALSE).
+      gps2gtfs extraction lost coverage: kept 6 trips from 2,167 input pings. Dropped pings_dropped_not_in_trip (686), pings_dropped_zero_coord (28). Inspect the full coverage table with g2g_diagnostics(result) (also attr(result, "diagnostics")). Silence with diagnostics_warn = FALSE or options(gps2gtfs.diagnostics_warn = FALSE).
 
 ---
 

@@ -41,18 +41,16 @@ g2g_diagnostics_schema <- function() {
   )
 }
 
-# Metrics that represent a loss worth warning about. Duplicate removal is
-# routine (archived realtime feeds re-report unchanged pings) and excluded, so
-# it appears in the table but does not trigger the coverage warning.
-g2g_diagnostics_concern_metrics <- function() {
-  c(
-    "pings_dropped_zero_coord",
-    "pings_dropped_missing_vehicle",
-    "rows_dropped_no_trip_identity",
-    "segments_dropped_single_ping",
-    "segments_dropped_stationary",
-    "pings_dropped_not_in_trip"
-  )
+# Drop metrics worth warning about: every "dropped" metric except routine
+# duplicate removal (archived realtime feeds re-report unchanged pings), which
+# stays in the table but never triggers the coverage warning.
+diagnostics_concerning_drops <- function(diagnostics) {
+  diagnostics[
+    grepl("dropped", diagnostics$metric) &
+      diagnostics$metric != "pings_dropped_duplicate" &
+      !is.na(diagnostics$n) &
+      diagnostics$n > 0L
+  ]
 }
 
 # Build the diagnostics table from a named vector of measured counts. Unlisted
@@ -131,36 +129,29 @@ diagnostics_summary_lines <- function(diagnostics) {
 # Warning message when a run lost coverage worth surfacing, else NULL. This is
 # what makes an unattended (agentic) run notice silent, non-random trip loss:
 # the loss shows up in the run's warning stream, not only in an attribute.
+# Each reason is reported in its own unit (pings, segments, rows) and never
+# summed across units, so the count for a reason always matches its metric.
 diagnostics_warning_message <- function(diagnostics) {
-  concern <- g2g_diagnostics_concern_metrics()
-  vals <- vapply(
-    concern,
-    function(m) diagnostics_value(diagnostics, m),
-    integer(1)
-  )
-  vals <- vals[!is.na(vals) & vals > 0L]
-  if (length(vals) == 0L) {
+  dropped <- diagnostics_concerning_drops(diagnostics)
+  if (nrow(dropped) == 0L) {
     return(NULL)
   }
-  vals <- sort(vals, decreasing = TRUE)
-  top <- utils::head(vals, 3L)
+  data.table::setorderv(dropped, "n", order = -1L)
   reasons <- paste(
-    sprintf("%s (%s)", names(top), vapply(top, fmt_count, "")),
+    sprintf("%s (%s)", dropped$metric, vapply(dropped$n, fmt_count, "")),
     collapse = ", "
   )
   pings_in <- diagnostics_value(diagnostics, "pings_in")
   trips <- diagnostics_value(diagnostics, "trips_kept")
   sprintf(
     paste0(
-      "gps2gtfs extraction lost coverage: dropped %s (of %s input pings), ",
-      "kept %s trips. Largest: %s. Inspect the full coverage table with ",
-      "g2g_diagnostics(result) (also attr(result, \"diagnostics\")). Silence ",
-      "with diagnostics_warn = FALSE or ",
-      "options(gps2gtfs.diagnostics_warn = FALSE)."
+      "gps2gtfs extraction lost coverage: kept %s trips from %s input pings. ",
+      "Dropped %s. Inspect the full coverage table with g2g_diagnostics(result) ",
+      "(also attr(result, \"diagnostics\")). Silence with diagnostics_warn = ",
+      "FALSE or options(gps2gtfs.diagnostics_warn = FALSE)."
     ),
-    fmt_count(sum(vals)),
-    fmt_count(pings_in),
     fmt_count(trips),
+    fmt_count(pings_in),
     reasons
   )
 }
@@ -193,9 +184,11 @@ maybe_warn_diagnostics <- function(diagnostics, enabled) {
 #' appears in the table). Suppress the warning with \code{diagnostics_warn =
 #' FALSE} or \code{options(gps2gtfs.diagnostics_warn = FALSE)}.
 #'
-#' @param x The list returned by
-#'   \code{\link{g2g_extract_trips_and_stop_times}}, the data.table returned by
-#'   \code{\link{g2g_extract_trips}}, or either table from the result list.
+#' @param x The value returned by
+#'   \code{\link{g2g_extract_trips_and_stop_times}} (a list) or by
+#'   \code{\link{g2g_extract_trips}} (a data.table). Diagnostics are attached to
+#'   that top-level object, not to the individual \code{trips}/\code{stop_times}
+#'   tables inside the list.
 #' @return A \code{g2g_diagnostics} data.table with columns \code{stage},
 #'   \code{metric}, and \code{n} (integer count; \code{NA} where a metric does
 #'   not apply to the run). It has a compact \code{print} method; treat it as a
@@ -218,18 +211,11 @@ maybe_warn_diagnostics <- function(diagnostics, enabled) {
 #' @export
 g2g_diagnostics <- function(x) {
   d <- attr(x, "diagnostics")
-  if (is.null(d) && is.list(x) && !is.data.frame(x)) {
-    for (el in x) {
-      d <- attr(el, "diagnostics")
-      if (!is.null(d)) {
-        break
-      }
-    }
-  }
   if (is.null(d)) {
     stop(
-      "No diagnostics found. Pass the return value of g2g_extract_trips() or ",
-      "g2g_extract_trips_and_stop_times().",
+      "No diagnostics found. Pass the value returned by g2g_extract_trips() ",
+      "or g2g_extract_trips_and_stop_times() (not an individual trips/",
+      "stop_times table extracted from the result list).",
       call. = FALSE
     )
   }

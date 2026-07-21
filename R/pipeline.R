@@ -427,9 +427,11 @@ g2g_extract_trips <- function(
 #'
 #'   Row order is a stable, backend-invariant contract: \code{trips} are
 #'   ordered by the internal integer \code{trip_id}, and \code{stop_times} by
-#'   \code{(trip_id, arrival_time, stop_id)}. The three backends (Rust, Rcpp,
-#'   pure R) return identical row order for identical input, so summaries built
-#'   on the result are reproducible regardless of backend or parallelism.
+#'   \code{(trip_id, arrival_time, stop_id, departure_time)}. Any rows still
+#'   tied after those keys are identical in every column, so the order is fully
+#'   determined. The three backends (Rust, Rcpp, pure R) return identical row
+#'   order for identical input, so summaries built on the result are
+#'   reproducible regardless of backend or parallelism.
 #'
 #'   The result also carries an \code{attr(., "diagnostics")} coverage table
 #'   (see \code{\link{g2g_diagnostics}}).
@@ -775,11 +777,21 @@ g2g_extract_trips_and_stop_times <- function(
 
   # Stable, backend-invariant row order (documented return contract): trips by
   # the internal integer trip_id; stop_times by (trip_id, arrival_time,
-  # stop_id), the stop_id breaking arrival-second ties so the order never
-  # depends on the parallel, backend-specific extraction order.
+  # stop_id, departure_time). stop_id breaks arrival-second ties and
+  # departure_time breaks the rare case of the same stop tying on arrival too;
+  # any rows still tied are identical in every column (the rest are constant
+  # within a trip or derived from arrival_time), so the order is fully
+  # determined and never depends on the parallel, backend-specific extraction
+  # order.
   data.table::setorder(trip_features, trip_id)
   if (nrow(stop_times) > 0L) {
-    data.table::setorder(stop_times, trip_id, arrival_time, stop_id)
+    data.table::setorder(
+      stop_times,
+      trip_id,
+      arrival_time,
+      stop_id,
+      departure_time
+    )
   }
 
   if (!is.null(output_trips_path)) {

@@ -25,6 +25,7 @@ if (getRversion() >= "2.15.1") {
     "day_of_week",
     "hour_of_day",
     "arrival_time",
+    "departure_time",
     "is_weekday",
     "duration_in_mins",
     "terminal_id",
