@@ -92,10 +92,19 @@ is_rust_available <- function() {
 #'   as stationary while successive pings stay within this many meters of the
 #'   dwell's first ping (anchoring absorbs GPS jitter while parked).
 #'   Default 50.
+#' @param diagnostics_warn Logical. Emit a one-line \code{warning()} when the
+#'   run drops coverage worth surfacing (pings with no usable trip identity,
+#'   unmatched segments, stops out of range) so unattended or agent-driven
+#'   pipelines notice silent loss. The full breakdown is always available via
+#'   \code{\link{g2g_diagnostics}} regardless of this flag. Default
+#'   \code{getOption("gps2gtfs.diagnostics_warn", TRUE)}.
 #' @return A data.table containing extracted trip features. \code{start_time}
 #'   and \code{end_time} are absolute \code{POSIXct} times in the timezone of
-#'   the input timestamps. See the "Inference tables, not GTFS files" section
-#'   of \code{\link{g2g_extract_trips_and_stop_times}}.
+#'   the input timestamps. Rows are returned in a stable, backend-invariant
+#'   order: sorted by the internal integer \code{trip_id}. The result carries
+#'   an \code{attr(., "diagnostics")} coverage table (see
+#'   \code{\link{g2g_diagnostics}}). See the "Inference tables, not GTFS files"
+#'   section of \code{\link{g2g_extract_trips_and_stop_times}}.
 #' @examples
 #' \donttest{
 #' data(g2g_data_gps)
@@ -125,7 +134,8 @@ g2g_extract_trips <- function(
   session_gap = 4 * 3600,
   segmentation = c("auto", "terminals", "layover"),
   layover_gap = 10 * 60,
-  layover_radius = 50
+  layover_radius = 50,
+  diagnostics_warn = getOption("gps2gtfs.diagnostics_warn", TRUE)
 ) {
   backend <- resolve_backend(backend)
   validate_projected_crs(projected_crs)
@@ -170,6 +180,7 @@ g2g_extract_trips <- function(
       raw_gps_df[[vehicle_col]] <- "veh_1"
     }
   }
+  n_pings_in <- nrow(raw_gps_df)
   cleaned <- g2g_clean_gps(
     raw_gps_df,
     projected = projected,
@@ -177,6 +188,7 @@ g2g_extract_trips <- function(
     time_col = time_col,
     tz = tz
   )
+  clean_drops <- attr(cleaned, "clean_drops")
   projected <- attr(cleaned, "projected")
   if (projected && is.null(projected_crs)) {
     stop(
@@ -210,9 +222,17 @@ g2g_extract_trips <- function(
 
   if (nrow(cleaned) == 0L) {
     result <- set_backend(empty_trip_features(cleaned$vehicle_id), backend)
+    diag <- build_diagnostics(c(
+      pings_in = as.integer(n_pings_in),
+      clean_drops,
+      pings_after_cleaning = 0L,
+      trips_kept = 0L
+    ))
+    result <- set_diagnostics(result, diag)
     if (!is.null(output_path)) {
       data.table::fwrite(result, output_path)
     }
+    maybe_warn_diagnostics(diag, diagnostics_warn)
     return(result)
   }
 
@@ -273,6 +293,7 @@ g2g_extract_trips <- function(
   } else {
     NULL
   }
+  seg_drops <- attr(trips, "seg_drops")
   trip_features <- extract_trip_features_r(
     trips,
     unique(as.character(terminals$terminal_id)),
@@ -280,12 +301,27 @@ g2g_extract_trips <- function(
   )
   trip_features <- set_backend(trip_features, backend)
 
+  # Stable, backend-invariant row order (documented return contract).
+  data.table::setorder(trip_features, trip_id)
+
+  # Coverage diagnostics. Stop-time metrics are NA here: this entry point
+  # never matches stops.
+  diag <- build_diagnostics(c(
+    pings_in = as.integer(n_pings_in),
+    clean_drops,
+    pings_after_cleaning = nrow(cleaned),
+    seg_drops,
+    trips_kept = nrow(trip_features)
+  ))
+  trip_features <- set_diagnostics(trip_features, diag)
+
   if (!is.null(output_path)) {
     data.table::fwrite(trip_features, output_path)
     message("Pipeline finished successfully! Output saved to ", output_path)
   } else {
     message("Pipeline finished successfully!")
   }
+  maybe_warn_diagnostics(diag, diagnostics_warn)
   trip_features
 }
 
@@ -376,12 +412,27 @@ g2g_extract_trips <- function(
 #'   (cleaned GPS records with assigned \code{trip_id} and \code{direction})
 #'   as a \code{trajectory} element — the input for
 #'   \code{\link{g2g_shapes_from_trips}}. Default \code{FALSE}.
+#' @param diagnostics_warn Logical. Emit a one-line \code{warning()} when the
+#'   run drops coverage worth surfacing (pings with no usable trip identity,
+#'   unmatched segments, stops out of range) so unattended or agent-driven
+#'   pipelines notice silent loss. The full breakdown is always available via
+#'   \code{\link{g2g_diagnostics}} regardless of this flag. Default
+#'   \code{getOption("gps2gtfs.diagnostics_warn", TRUE)}.
 #' @return A list containing two data.tables: \code{trips} and
 #'   \code{stop_times}, plus \code{trajectory} when
 #'   \code{return_trajectory = TRUE}. All times (\code{start_time},
 #'   \code{end_time}, \code{arrival_time}, \code{departure_time}) are absolute
 #'   \code{POSIXct} values in the timezone of the input timestamps — never
 #'   clock strings, so trips running past midnight stay unambiguous.
+#'
+#'   Row order is a stable, backend-invariant contract: \code{trips} are
+#'   ordered by the internal integer \code{trip_id}, and \code{stop_times} by
+#'   \code{(trip_id, arrival_time, stop_id)}. The three backends (Rust, Rcpp,
+#'   pure R) return identical row order for identical input, so summaries built
+#'   on the result are reproducible regardless of backend or parallelism.
+#'
+#'   The result also carries an \code{attr(., "diagnostics")} coverage table
+#'   (see \code{\link{g2g_diagnostics}}).
 #'
 #' @section Inference tables, not GTFS files:
 #' The returned \code{trips} and \code{stop_times} use GTFS-style column
@@ -457,7 +508,8 @@ g2g_extract_trips_and_stop_times <- function(
   segmentation = c("auto", "terminals", "layover"),
   layover_gap = 10 * 60,
   layover_radius = 50,
-  return_trajectory = FALSE
+  return_trajectory = FALSE,
+  diagnostics_warn = getOption("gps2gtfs.diagnostics_warn", TRUE)
 ) {
   backend <- resolve_backend(backend)
   validate_positive_radius(stops_buffer_radius, "stops_buffer_radius")
@@ -522,6 +574,7 @@ g2g_extract_trips_and_stop_times <- function(
   }
   stops_df <- if (is.character(stops_data) && length(stops_data) == 1L) data.table::fread(stops_data) else data.table::as.data.table(stops_data)
 
+  n_pings_in <- nrow(raw_gps_df)
   cleaned <- g2g_clean_gps(
     raw_gps_df,
     projected = projected,
@@ -529,6 +582,7 @@ g2g_extract_trips_and_stop_times <- function(
     time_col = time_col,
     tz = tz
   )
+  clean_drops <- attr(cleaned, "clean_drops")
   projected <- attr(cleaned, "projected")
   if (projected && is.null(projected_crs)) {
     stop(
@@ -610,7 +664,18 @@ g2g_extract_trips_and_stop_times <- function(
     if (isTRUE(return_trajectory)) {
       result$trajectory <- empty_trajectory(cleaned)
     }
-    return(set_backend(result, backend))
+    diag <- build_diagnostics(c(
+      pings_in = as.integer(n_pings_in),
+      clean_drops,
+      pings_after_cleaning = 0L,
+      pings_assigned_to_trips = 0L,
+      pings_dropped_not_in_trip = 0L,
+      trips_kept = 0L,
+      stop_times_kept = 0L
+    ))
+    result <- set_diagnostics(set_backend(result, backend), diag)
+    maybe_warn_diagnostics(diag, diagnostics_warn)
+    return(result)
   }
 
   if (is.null(projected_crs) && !projected) {
@@ -663,6 +728,7 @@ g2g_extract_trips_and_stop_times <- function(
       session_gap = session_gap
     )
   }
+  seg_drops <- attr(trips, "seg_drops")
   trip_features <- extract_trip_features_r(
     trips,
     terminal_ids,
@@ -707,6 +773,15 @@ g2g_extract_trips_and_stop_times <- function(
     ]
   }
 
+  # Stable, backend-invariant row order (documented return contract): trips by
+  # the internal integer trip_id; stop_times by (trip_id, arrival_time,
+  # stop_id), the stop_id breaking arrival-second ties so the order never
+  # depends on the parallel, backend-specific extraction order.
+  data.table::setorder(trip_features, trip_id)
+  if (nrow(stop_times) > 0L) {
+    data.table::setorder(stop_times, trip_id, arrival_time, stop_id)
+  }
+
   if (!is.null(output_trips_path)) {
     data.table::fwrite(trip_features, output_trips_path)
   }
@@ -720,9 +795,26 @@ g2g_extract_trips_and_stop_times <- function(
     message("Pipeline finished successfully!")
   }
 
+  # Coverage diagnostics: boundary ping/trip counts plus per-reason drops
+  # (cleaning breakdown from g2g_clean_gps, segment drops from the extractor).
+  diag <- build_diagnostics(c(
+    pings_in = as.integer(n_pings_in),
+    clean_drops,
+    pings_after_cleaning = nrow(cleaned),
+    seg_drops,
+    pings_assigned_to_trips = nrow(trajectory),
+    pings_dropped_not_in_trip = nrow(cleaned) - nrow(trajectory),
+    trips_kept = nrow(trip_features),
+    stop_times_kept = nrow(stop_times)
+  ))
+
   result <- list(trips = trip_features, stop_times = stop_times)
   if (isTRUE(return_trajectory)) {
     result$trajectory <- trajectory
   }
-  set_backend(result, backend)
+  # Attach to the top-level result only: stamping the sub-tables would make
+  # two otherwise-identical tables compare unequal on the diagnostics attribute.
+  result <- set_diagnostics(set_backend(result, backend), diag)
+  maybe_warn_diagnostics(diag, diagnostics_warn)
+  result
 }

@@ -23,6 +23,16 @@
 * `g2g_clean_gps()` gains `dedupe` and `drop_missing_vehicle` hygiene options,
   a `tz` argument (also on both pipeline entry points), row-`id` generation,
   and optional `speed`.
+* `g2g_extract_trips()` and `g2g_extract_trips_and_stop_times()` now return
+  rows in a documented, backend-invariant order — `trips` by `trip_id`,
+  `stop_times` by `(trip_id, arrival_time, stop_id)` — so summaries built on
+  the output are reproducible regardless of backend or parallelism.
+* `g2g_extract_trips()` and `g2g_extract_trips_and_stop_times()` now attach an
+  extraction coverage diagnostics table (per-stage ping, segment, and trip
+  counts) to the result, retrievable with the new `g2g_diagnostics()`, and
+  emit a one-line `warning()` when a run drops coverage worth surfacing so
+  unattended pipelines notice silent loss. Silence it with `diagnostics_warn =
+  FALSE` or `options(gps2gtfs.diagnostics_warn = FALSE)`.
 
 ## Breaking changes
 
