@@ -152,11 +152,27 @@ The returned \code{trips} and \code{stop_times} use GTFS-style column
 names but are *inference tables*, not valid \code{trips.txt}/
 \code{stop_times.txt}: they carry no \code{route_id}, \code{service_id},
 \code{stop_sequence}, or GTFS clock strings (\code{"HH:MM:SS"}, with
-\code{>24:00:00} for post-midnight stops). Converting them into a
-standard-compliant static feed — ID linkage, stop sequencing, service-day
-attribution, and time encoding — is the job of a downstream assembler
-such as \code{gtfsrt2static::snapshot_from_stop_times()} +
-\code{snapshot_assemble()}.
+\code{>24:00:00} for post-midnight stops). This is deliberate:
+\code{route_id}, \code{service_id}, and canonical stop identities cannot be
+inferred from coordinates alone, so \code{gps2gtfs} stops at inference
+rather than synthesizing them.
+
+Turning these tables into a standard-compliant feed — deriving
+\code{stop_sequence}, attributing each trip to a service day, encoding
+\code{>24:00:00} clock strings, and linking or synthesizing IDs — is the
+job of the companion package \code{gtfsrt2static} (a separate, optional
+install), which yields a feed the MobilityData \code{gtfs-validator}
+accepts:
+\preformatted{
+res    <- g2g_extract_trips_and_stop_times(...)
+events <- gtfsrt2static::snapshot_from_stop_times(
+  res$stop_times, trip_id_col = "provided_trip_id"  # keep official IDs
+)
+feed   <- gtfsrt2static::snapshot_assemble(events)  # baseline: real IDs
+# or, with no planned feed to lean on:
+# feed <- gtfsrt2static::snapshot_scaffold(events, strict = TRUE)
+gtfsio::export_gtfs(feed, "realized_gtfs.zip")      # gtfstools/tidytransit-ready
+}
 
 Both tables carry a \code{provided_trip_id} column: the caller's official
 trip identity (the \code{trip_col} value, e.g. a GTFS-Realtime
