@@ -7,9 +7,11 @@
 g2g_diagnostics(x)
 }
 \arguments{
-\item{x}{The list returned by
-\code{\link{g2g_extract_trips_and_stop_times}}, the data.table returned by
-\code{\link{g2g_extract_trips}}, or either table from the result list.}
+\item{x}{The value returned by
+\code{\link{g2g_extract_trips_and_stop_times}} (a list) or by
+\code{\link{g2g_extract_trips}} (a data.table). Diagnostics are attached to
+that top-level object, not to the individual \code{trips}/\code{stop_times}
+tables inside the list.}
 }
 \value{
 A \code{g2g_diagnostics} data.table with columns \code{stage},

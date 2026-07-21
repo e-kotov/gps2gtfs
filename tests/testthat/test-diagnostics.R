@@ -87,6 +87,79 @@ test_that("the fast path counts rows with no usable trip identity", {
   )
 })
 
+test_that("total fast-path failure still counts what was dropped", {
+  base <- as.POSIXct("2026-06-06 08:00:00", tz = "UTC")
+  terminals <- make_route_inputs()$terminals
+
+  # Every row lacks a usable trip identity.
+  all_na <- data.frame(
+    vehicle_id = "b1",
+    latitude = c(7.290, 7.320),
+    longitude = c(80.630, 80.660),
+    timestamp = base + c(0, 300),
+    speed = 0,
+    trip_id = NA_character_
+  )
+  diag_na <- g2g_diagnostics(g2g_extract_trips(
+    gps_data = all_na,
+    terminals_data = terminals,
+    terminals_buffer_radius = 100,
+    trip_col = "trip_id"
+  ))
+  expect_identical(
+    diag_na$n[diag_na$metric == "rows_dropped_no_trip_identity"],
+    2L
+  )
+  expect_identical(diag_na$n[diag_na$metric == "trips_kept"], 0L)
+
+  # Every trip identity is a lone ping.
+  all_single <- data.frame(
+    vehicle_id = "b1",
+    latitude = c(7.290, 7.320),
+    longitude = c(80.630, 80.660),
+    timestamp = base + c(0, 300),
+    speed = 0,
+    trip_id = c("T1", "T2")
+  )
+  diag_single <- g2g_diagnostics(g2g_extract_trips(
+    gps_data = all_single,
+    terminals_data = terminals,
+    terminals_buffer_radius = 100,
+    trip_col = "trip_id"
+  ))
+  expect_identical(
+    diag_single$n[diag_single$metric == "segments_dropped_single_ping"],
+    2L
+  )
+  expect_identical(
+    diag_single$n[diag_single$metric == "rows_dropped_no_trip_identity"],
+    0L
+  )
+  expect_identical(diag_single$n[diag_single$metric == "trips_kept"], 0L)
+})
+
+test_that("total layover failure still counts stationary drops", {
+  base <- as.POSIXct("2026-06-06 08:00:00", tz = "UTC")
+  # Two short stationary clusters separated by a silent gap longer than the
+  # layover gap: the vehicle never moves, so neither becomes a trip.
+  stationary <- data.frame(
+    vehicle_id = "L1",
+    latitude = c(7.290, 7.290, 7.290, 7.320, 7.320, 7.320),
+    longitude = c(80.630, 80.630, 80.630, 80.660, 80.660, 80.660),
+    timestamp = base + c(0, 10, 20, 1220, 1230, 1240),
+    speed = 0
+  )
+  diag <- g2g_diagnostics(g2g_extract_trips(
+    gps_data = stationary,
+    segmentation = "layover"
+  ))
+  expect_identical(diag$n[diag$metric == "trips_kept"], 0L)
+  expect_identical(
+    diag$n[diag$metric == "segments_dropped_stationary"],
+    2L
+  )
+})
+
 test_that("empty input still yields a schema-stable diagnostics table", {
   res <- suppressWarnings(suppressMessages(g2g_extract_trips_and_stop_times(
     gps_data = g2g_data_gps[0],

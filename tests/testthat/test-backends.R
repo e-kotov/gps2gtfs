@@ -105,11 +105,20 @@ test_that("returned row order is a stable, backend-invariant contract", {
       result$trips$trip_id,
       result$trips[order(trip_id)]$trip_id
     )
-    key <- result$stop_times[, .(trip_id, arrival_time, stop_id)]
-    expect_identical(key, key[order(trip_id, arrival_time, stop_id)])
+    key <- result$stop_times[, .(
+      trip_id,
+      arrival_time,
+      stop_id,
+      departure_time
+    )]
+    expect_identical(
+      key,
+      key[order(trip_id, arrival_time, stop_id, departure_time)]
+    )
   }
 
-  # Every backend returns byte-identical whole tables in the same row order.
+  # Every backend returns whole tables with identical values and row order
+  # (the per-run `backend` attribute aside, which `ignore_attr` drops).
   for (result in results[-1]) {
     expect_equal(result$trips, results[[1]]$trips, ignore_attr = TRUE)
     expect_equal(

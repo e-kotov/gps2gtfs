@@ -126,6 +126,18 @@ extract_trips_from_ids_r <- function(
     terminals <- data.table::data.table(terminal_id = character(0))
   }
 
+  # Segment-drop counters, stamped onto every return (including the
+  # total-failure early returns below) so the diagnostics never lose the count
+  # of what was dropped in exactly the runs that dropped everything.
+  n_no_identity <- 0L
+  n_single <- 0L
+  stamp_seg_drops <- function(res) {
+    attr(res, "seg_drops") <- c(
+      rows_dropped_no_trip_identity = as.integer(n_no_identity),
+      segments_dropped_single_ping = as.integer(n_single)
+    )
+    res
+  }
   empty_result <- function() {
     result <- data.table::copy(cleaned_gps_dt[0])
     result[, bus_stop := character()]
@@ -133,7 +145,7 @@ extract_trips_from_ids_r <- function(
     if (!is.null(direction_col)) {
       result[, rt_direction := character()]
     }
-    result
+    stamp_seg_drops(result)
   }
   if (nrow(cleaned_gps_dt) == 0L) {
     return(empty_result())
@@ -237,12 +249,7 @@ extract_trips_from_ids_r <- function(
   # can preserve it. extract_trip_features_r() surfaces it as
   # provided_trip_id.
   bounds[, seg_n := NULL]
-  # Segment-drop counts for extraction diagnostics (consumed by the pipeline).
-  attr(bounds, "seg_drops") <- c(
-    rows_dropped_no_trip_identity = as.integer(n_no_identity),
-    segments_dropped_single_ping = as.integer(n_single)
-  )
-  bounds[]
+  stamp_seg_drops(bounds)[]
 }
 
 #' Dwell Run IDs via Greedy Anchor Clustering
@@ -335,12 +342,24 @@ extract_trips_layover_r <- function(
     validate_identifiers(terminals$terminal_id, "trip_terminals_df 'terminal_id'")
   }
 
+  # Segment-drop counters, stamped onto every return (including the
+  # total-failure early returns below) so an all-single-ping or all-stationary
+  # run still reports what it dropped.
+  n_single <- 0L
+  n_stationary <- 0L
+  stamp_seg_drops <- function(res) {
+    attr(res, "seg_drops") <- c(
+      segments_dropped_single_ping = as.integer(n_single),
+      segments_dropped_stationary = as.integer(n_stationary)
+    )
+    res
+  }
   empty_result <- function() {
     result <- data.table::copy(cleaned_gps_dt[0])
     result[, bus_stop := character()]
     result[, trip_id := integer()]
     result[, rt_direction := character()]
-    result
+    stamp_seg_drops(result)
   }
   if (nrow(cleaned_gps_dt) == 0L) {
     return(empty_result())
@@ -451,12 +470,7 @@ extract_trips_layover_r <- function(
       "seg_runs"
     ) := NULL
   ]
-  # Segment-drop counts for extraction diagnostics (consumed by the pipeline).
-  attr(bounds, "seg_drops") <- c(
-    segments_dropped_single_ping = as.integer(n_single),
-    segments_dropped_stationary = as.integer(n_stationary)
-  )
-  bounds[]
+  stamp_seg_drops(bounds)[]
 }
 
 #' Extract Trips from Cleaned GPS Data
