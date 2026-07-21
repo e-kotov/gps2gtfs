@@ -427,10 +427,10 @@ g2g_extract_trips <- function(
 #'
 #'   Row order is a stable, backend-invariant contract: \code{trips} are
 #'   ordered by the internal integer \code{trip_id}, and \code{stop_times} by
-#'   \code{(trip_id, arrival_time, stop_id, departure_time)}. Any rows still
-#'   tied after those keys are identical in every column, so the order is fully
-#'   determined. The three backends (Rust, Rcpp, pure R) return identical row
-#'   order for identical input, so summaries built on the result are
+#'   \code{(trip_id, arrival_time, stop_id, departure_time)} with every
+#'   remaining column appended as a final tie-breaker. The sort is therefore
+#'   total, so the three backends (Rust, Rcpp, pure R) return identical row
+#'   order for identical input and summaries built on the result are
 #'   reproducible regardless of backend or parallelism.
 #'
 #'   The result also carries an \code{attr(., "diagnostics")} coverage table
@@ -775,22 +775,24 @@ g2g_extract_trips_and_stop_times <- function(
     ]
   }
 
-  # Stable, backend-invariant row order (documented return contract): trips by
-  # the internal integer trip_id; stop_times by (trip_id, arrival_time,
-  # stop_id, departure_time). stop_id breaks arrival-second ties and
-  # departure_time breaks the rare case of the same stop tying on arrival too;
-  # any rows still tied are identical in every column (the rest are constant
-  # within a trip or derived from arrival_time), so the order is fully
-  # determined and never depends on the parallel, backend-specific extraction
-  # order.
+  # Stable, backend-invariant row order (documented return contract). trips are
+  # keyed by the internal integer trip_id (one row per trip, so unique). For
+  # stop_times the meaningful key is (trip_id, arrival_time, stop_id,
+  # departure_time); every remaining column is appended as a final tie-breaker
+  # so the sort is total and the order is fully determined regardless of the
+  # parallel, backend-specific extraction order - it never relies on any column
+  # being derived from another.
   data.table::setorder(trip_features, trip_id)
   if (nrow(stop_times) > 0L) {
-    data.table::setorder(
+    stop_order_keys <- c(
+      "trip_id",
+      "arrival_time",
+      "stop_id",
+      "departure_time"
+    )
+    data.table::setorderv(
       stop_times,
-      trip_id,
-      arrival_time,
-      stop_id,
-      departure_time
+      c(stop_order_keys, setdiff(names(stop_times), stop_order_keys))
     )
   }
 
