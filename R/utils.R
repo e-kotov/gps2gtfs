@@ -58,6 +58,53 @@ validate_layover_radius <- function(x) {
 # only: output tables carry the mapped integer direction (always 1L).
 layover_direction_level <- "layover"
 
+# Closed vocabulary for the C5 `orientation_status` column (see the additive,
+# versioned C5 contract in private/terminal-detection-spike.md §3). This column
+# is never NA. Phase 0/1 emits only "none" - no orientation method has been
+# applied, the pre-detector state. The remaining levels are RESERVED for the
+# (not-yet-authorized) P2 orientation detector: "ok" (a confident 0/1 call),
+# "single_group" (layover-style one-direction output, scored as orientation
+# unavailable), and "abstain_<reason>" for observable abstentions. A detector
+# that introduces a new abstention reason extends this vector in one place so
+# every produced table keeps one identical, factor-stable level set.
+orientation_status_levels <- c("none", "ok", "single_group")
+
+# Build the C5 orientation_status factor. Defaults to "none" (no detector run).
+# Values outside `orientation_status_levels` would become NA, violating the
+# never-NA contract, so a detector must extend the level set before emitting a
+# new value.
+new_orientation_status <- function(value = "none", n = 1L) {
+  x <- if (length(value) == 1L) rep(value, n) else value
+  factor(x, levels = orientation_status_levels)
+}
+
+# The additive C5 orientation/pattern columns carried on BOTH `trips` and
+# `stop_times` (orientation_* + pattern_ref). Anchors are trips-only (see
+# add_trip_orientation_cols). All default to the detector-off "empty" state:
+# orientation_id NA (abstained/unavailable), orientation_status "none",
+# orientation_confidence NA, pattern_ref NA (reserved until P4 clears its gate).
+# Appended after all pre-existing columns so the legacy schema's column
+# positions, names, types, and values are untouched (backward-compatibility
+# contract, spike §3.5).
+add_shared_orientation_cols <- function(dt) {
+  n <- nrow(dt)
+  dt[, orientation_id := NA_integer_]
+  dt[, orientation_status := new_orientation_status("none", n)]
+  dt[, orientation_confidence := NA_real_]
+  dt[, pattern_ref := NA_character_]
+  dt[]
+}
+
+# Trip-level C5 columns: the shared orientation/pattern columns plus the
+# turnaround anchor refs, which are trips-only (a turnaround cluster is
+# trip-level metadata with no per-stop-event meaning, spike §3.4 / §9).
+add_trip_orientation_cols <- function(dt) {
+  add_shared_orientation_cols(dt)
+  dt[, start_anchor_ref := NA_character_]
+  dt[, end_anchor_ref := NA_character_]
+  dt[]
+}
+
 resolve_segmentation <- function(segmentation, trip_col, have_terminals) {
   segmentation <- match.arg(segmentation, c("auto", "terminals", "layover"))
   if (!is.null(trip_col)) {
@@ -146,7 +193,7 @@ make_weekday_features <- function(date) {
 }
 
 empty_trip_features <- function(vehicle_id = character()) {
-  data.table::data.table(
+  dt <- data.table::data.table(
     trip_id = integer(),
     vehicle_id = vehicle_id[0],
     date = character(),
@@ -165,10 +212,12 @@ empty_trip_features <- function(vehicle_id = character()) {
     hour_of_day = integer(),
     is_weekday = logical()
   )
+  # Additive C5 columns, appended after every pre-existing column.
+  add_trip_orientation_cols(dt)
 }
 
 empty_stop_times <- function(vehicle_id = character()) {
-  data.table::data.table(
+  dt <- data.table::data.table(
     trip_id = integer(),
     vehicle_id = vehicle_id[0],
     date = character(),
@@ -186,6 +235,9 @@ empty_stop_times <- function(vehicle_id = character()) {
     is_weekday = logical(),
     provided_trip_id = character()
   )
+  # Additive C5 columns (shared set only; anchors are trips-only), appended
+  # after every pre-existing column.
+  add_shared_orientation_cols(dt)
 }
 
 empty_trajectory <- function(cleaned_gps_dt) {

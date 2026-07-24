@@ -789,5 +789,13 @@ extract_trip_features_r <- function(
   trip_features_dt[, hour_of_day := as.integer(format(starts$timestamp, "%H"))]
   trip_features_dt[, is_weekday := weekday_features$is_weekday]
 
+  # Additive, versioned C5 columns (orientation_id / orientation_status /
+  # orientation_confidence / pattern_ref + trips-only anchor refs). Appended
+  # after every pre-existing column and left in the detector-off empty state:
+  # no orientation detector is authorized yet, so `orientation_id` stays NA and
+  # `direction` remains the legacy 1..K field downstream reads. See
+  # private/terminal-detection-spike.md §3.
+  add_trip_orientation_cols(trip_features_dt)
+
   return(trip_features_dt)
 }

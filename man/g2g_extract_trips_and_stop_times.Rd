@@ -201,6 +201,39 @@ them. The internal integer \code{trip_id} remains the join key between the
 two tables.
 }
 
+\section{Orientation and pattern labels (C5 contract)}{
+
+Both tables also carry an additive, versioned set of inference-label columns.
+They are the contract slots for a future baseline-free
+orientation/turnaround-detection stage and are currently always in the
+\dQuote{no detector applied} state (no such detector is enabled yet), so the
+legacy \code{direction} column - retained unchanged - is what downstream
+consumers read today:
+\describe{
+  \item{\code{orientation_id}}{Integer \code{0}/\code{1}, geometric travel
+    direction only; \code{NA} when unavailable/abstained (always \code{NA}
+    today).}
+  \item{\code{orientation_status}}{Factor, never \code{NA}. \code{"none"}
+    (no orientation method applied) today; reserved values \code{"ok"} /
+    \code{"single_group"} / \code{"abstain_<reason>"} make a future
+    detector's abstentions observable rather than silent.}
+  \item{\code{orientation_confidence}}{Double in \code{[0,1]}, \code{NA}
+    when \code{orientation_id} is \code{NA} (always \code{NA} today).}
+  \item{\code{pattern_ref}}{Character K-way branch/short-turn variant
+    identity; reserved nullable (always \code{NA} today). The handoff to
+    \code{gtfsrt2static}'s cross-trip stop-order stage.}
+  \item{\code{start_anchor_ref}, \code{end_anchor_ref}}{Character discovered
+    turnaround-cluster ids; \strong{\code{trips} only} (trip-level metadata,
+    not per-stop), \code{NA} today.}
+}
+Downstream, \code{gtfsrt2static} maps \code{orientation_id} into the GTFS
+\code{direction_id} (falling back to \code{direction} while
+\code{orientation_id} is \code{NA}); \code{pattern_ref} rides through to C6;
+anchors stay in C5. \code{orientation_*}/\code{pattern_ref} propagate from
+\code{trips} onto \code{stop_times} on the internal \code{trip_id}, the same
+mechanism as \code{provided_trip_id}.
+}
+
 \examples{
 \donttest{
 data(g2g_data_gps)
