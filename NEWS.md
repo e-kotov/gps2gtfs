@@ -1,3 +1,20 @@
+# gps2gtfs (development version)
+
+## New features
+
+* `trips` and `stop_times` gain an additive, versioned set of C5 inference-label
+  columns for a future baseline-free orientation/turnaround-detection stage:
+  `orientation_id`, `orientation_status`, `orientation_confidence`, and a
+  reserved-nullable `pattern_ref` (both tables), plus trips-only
+  `start_anchor_ref`/`end_anchor_ref`. No orientation detector is enabled yet,
+  so every new column is in its empty state (`orientation_id`/`_confidence`/
+  `pattern_ref`/anchors `NA`, `orientation_status = "none"`) and the legacy
+  `direction` column is retained unchanged. The columns are appended after all
+  pre-existing columns, so existing output is byte-for-byte compatible.
+  `orientation_*`/`pattern_ref` propagate from `trips` onto `stop_times` on the
+  internal `trip_id`, the same mechanism as `provided_trip_id`. See
+  `?g2g_extract_trips_and_stop_times` ("Orientation and pattern labels").
+
 # gps2gtfs 0.2.0
 
 ## New features

@@ -469,6 +469,37 @@ g2g_extract_trips <- function(
 #' downstream assembler preserve official trip IDs instead of synthesizing
 #' them. The internal integer \code{trip_id} remains the join key between the
 #' two tables.
+#'
+#' @section Orientation and pattern labels (C5 contract):
+#' Both tables also carry an additive, versioned set of inference-label columns.
+#' They are the contract slots for a future baseline-free
+#' orientation/turnaround-detection stage and are currently always in the
+#' \dQuote{no detector applied} state (no such detector is enabled yet), so the
+#' legacy \code{direction} column - retained unchanged - is what downstream
+#' consumers read today:
+#' \describe{
+#'   \item{\code{orientation_id}}{Integer \code{0}/\code{1}, geometric travel
+#'     direction only; \code{NA} when unavailable/abstained (always \code{NA}
+#'     today).}
+#'   \item{\code{orientation_status}}{Factor, never \code{NA}. \code{"none"}
+#'     (no orientation method applied) today; reserved values \code{"ok"} /
+#'     \code{"single_group"} / \code{"abstain_<reason>"} make a future
+#'     detector's abstentions observable rather than silent.}
+#'   \item{\code{orientation_confidence}}{Double in \code{[0,1]}, \code{NA}
+#'     when \code{orientation_id} is \code{NA} (always \code{NA} today).}
+#'   \item{\code{pattern_ref}}{Character K-way branch/short-turn variant
+#'     identity; reserved nullable (always \code{NA} today). The handoff to
+#'     \code{gtfsrt2static}'s cross-trip stop-order stage.}
+#'   \item{\code{start_anchor_ref}, \code{end_anchor_ref}}{Character discovered
+#'     turnaround-cluster ids; \strong{\code{trips} only} (trip-level metadata,
+#'     not per-stop), \code{NA} today.}
+#' }
+#' Downstream, \code{gtfsrt2static} maps \code{orientation_id} into the GTFS
+#' \code{direction_id} (falling back to \code{direction} while
+#' \code{orientation_id} is \code{NA}); \code{pattern_ref} rides through to C6;
+#' anchors stay in C5. \code{orientation_*}/\code{pattern_ref} propagate from
+#' \code{trips} onto \code{stop_times} on the internal \code{trip_id}, the same
+#' mechanism as \code{provided_trip_id}.
 #' @examples
 #' \donttest{
 #' data(g2g_data_gps)
@@ -764,13 +795,23 @@ g2g_extract_trips_and_stop_times <- function(
     data.table::setnames(stop_times, "bus_stop", "stop_id")
   }
 
-  # Carry the caller's official trip identity (fast path) onto stop_times so
-  # downstream assembly can preserve it. Keyed on the internal integer
-  # trip_id shared by both tables; NA in spatial mode.
+  # Carry trip-level metadata onto stop_times, keyed on the internal integer
+  # trip_id shared by both tables. This is the single propagation mechanism for
+  # provided_trip_id (the caller's official trip identity, fast path; NA in
+  # spatial mode) AND the additive C5 orientation/pattern columns: when the
+  # (not-yet-authorized) P2/P4 detectors populate them per trip, stop_times
+  # inherits the exact same values here. Anchors are NOT propagated - they stay
+  # trips-only (spike §3.4). With detectors off every value is the empty state.
   if (nrow(stop_times) > 0L && "provided_trip_id" %in% names(trip_features)) {
     stop_times[
       trip_features,
-      provided_trip_id := i.provided_trip_id,
+      `:=`(
+        provided_trip_id = i.provided_trip_id,
+        orientation_id = i.orientation_id,
+        orientation_status = i.orientation_status,
+        orientation_confidence = i.orientation_confidence,
+        pattern_ref = i.pattern_ref
+      ),
       on = "trip_id"
     ]
   }

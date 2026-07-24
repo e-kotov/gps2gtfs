@@ -48,7 +48,7 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# Private scratch/vendor/data artifacts
+# Private scratch/vendor/data artifacts (docs, the VP protobuf archive, etc.)
 private/
 
 # Native build artifacts
