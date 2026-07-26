@@ -10,7 +10,9 @@ Authors@R: c(
 Description: Preprocesses raw GPS trajectory data of public transit and
     transforms it to GTFS format. Provides a high-performance R port of
     the 'gps2gtfs' Python package by Aaivu (Ratneswaran et al., 2023)
-    <doi:10.1109/ICCT56969.2023.10075789>. Heavy computational tasks are
+    <doi:10.1109/ICCT56969.2023.10075789>, whose software description is
+    published in Ratneswaran et al. (2025)
+    <doi:10.1016/j.simpa.2025.100780>. Heavy computational tasks are
     offloaded to an extremely fast compiled Rust backend or a C++ (Rcpp)
     backend. Automatic backend selection prefers Rust, then Rcpp, and falls
     back to a slower pure R implementation utilizing 'data.table' and 'sf'.
