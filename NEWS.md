@@ -1,5 +1,21 @@
 # gps2gtfs (development version)
 
+## Breaking changes
+
+* `stop_direction_map` is now required when `stops_data` labels its direction
+  groups with anything other than the terminal IDs themselves. It was
+  previously derived by pairing the two labels with the two terminals in order
+  of appearance — a coin flip, since the label order follows however the caller
+  happened to build `stops_data`. Losing that flip reverses every direction in
+  the output while still producing plausible stop times, because each ping then
+  matches the opposite-direction stop across the street. Which label belongs to
+  which terminal is not recoverable from the data — both groups span the same
+  corridor, so they sit at the same distance from both terminals — so the case
+  is now an error listing both candidate maps rather than a guess. Callers
+  whose labels are already terminal IDs (everyone using
+  `g2g_stops_from_gtfs()`) and users of `direction_col` or layover
+  segmentation are unaffected.
+
 ## Bug fixes
 
 * Stop extraction no longer breaks when the GPS data carries a column of its
@@ -32,10 +48,6 @@
   enough together to be two platforms of one place rather than the two ends of
   the route, and its loop-route error now points at `segmentation = "layover"`.
 
-* When `stop_direction_map` is omitted and the stop direction labels are not
-  terminal IDs, the pairing of labels to terminals by order of appearance —
-  which silently reverses every direction if that order is not the intended
-  one — is now reported as a message.
 
 ## New features
 

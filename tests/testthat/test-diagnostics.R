@@ -3,6 +3,7 @@ test_that("results carry a full-schema diagnostics table", {
     gps_data = g2g_data_gps,
     terminals_data = g2g_data_terminals,
     stops_data = g2g_data_stops,
+    stop_direction_map = c("Kandy-Digana" = "BT01", "Digana-Kandy" = "BT02"),
     terminals_buffer_radius = 100,
     stops_buffer_radius = 50,
     stops_extended_buffer_radius = 100
@@ -19,6 +20,7 @@ test_that("diagnostics count the extraction fixture exactly", {
     gps_data = g2g_data_gps,
     terminals_data = g2g_data_terminals,
     stops_data = g2g_data_stops,
+    stop_direction_map = c("Kandy-Digana" = "BT01", "Digana-Kandy" = "BT02"),
     terminals_buffer_radius = 100,
     stops_buffer_radius = 50,
     stops_extended_buffer_radius = 100
@@ -165,6 +167,7 @@ test_that("empty input still yields a schema-stable diagnostics table", {
     gps_data = g2g_data_gps[0],
     terminals_data = g2g_data_terminals,
     stops_data = g2g_data_stops,
+    stop_direction_map = c("Kandy-Digana" = "BT01", "Digana-Kandy" = "BT02"),
     terminals_buffer_radius = 100,
     stops_buffer_radius = 50,
     stops_extended_buffer_radius = 100

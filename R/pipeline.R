@@ -360,13 +360,17 @@ g2g_extract_trips <- function(
 #'   Rcpp, then pure R. Explicit unavailable backends produce an error.
 #' @param projected Logical. Whether plain-table coordinates are already
 #'   projected. Out-of-bounds coordinates require explicit \code{TRUE}.
-#' @param stop_direction_map Optional named character vector mapping each raw
-#'   stop-direction label to its starting terminal ID. When omitted and the
-#'   labels are not terminal IDs already, the two labels are paired with the
-#'   two terminals \emph{by order of appearance} in \code{stops_data} - which
-#'   silently reverses every direction if that order is not the one you meant.
-#'   The pairing chosen is reported as an \code{[INFO]} message; supply this
-#'   argument to fix it explicitly.
+#' @param stop_direction_map Named character vector mapping each raw
+#'   stop-direction label to the terminal ID that trips in that direction
+#'   \emph{start from}. Required whenever \code{stops_data} labels its
+#'   directions with anything other than the terminal IDs themselves: which
+#'   label belongs to which terminal is not recoverable from the data (both
+#'   direction groups span the same corridor), and getting it backwards
+#'   silently reverses every direction in the output while still producing
+#'   plausible stop times. Omitting it in that case is an error listing both
+#'   candidate maps. Not needed when the labels are already terminal IDs, as
+#'   with \code{\link{g2g_stops_from_gtfs}}, nor in data-driven direction mode
+#'   (\code{direction_col}) or layover segmentation.
 #' @param vehicle_col Character. Name of the vehicle identifier column in
 #'   \code{gps_data}. Default \code{"vehicle_id"} (GTFS-Realtime convention).
 #' @param time_col Character. Name of the timestamp column in \code{gps_data}.
@@ -529,7 +533,13 @@ g2g_extract_trips <- function(
 #'   stops_data = g2g_data_stops,
 #'   terminals_buffer_radius = 50,
 #'   stops_buffer_radius = 30,
-#'   stops_extended_buffer_radius = 50
+#'   stops_extended_buffer_radius = 50,
+#'   # Each stop-direction label maps to the terminal its trips start from.
+#'   # BT01 is Kandy, BT02 is Digana.
+#'   stop_direction_map = c(
+#'     "Kandy-Digana" = "BT01",
+#'     "Digana-Kandy" = "BT02"
+#'   )
 #' )
 #' head(result$trips)
 #' head(result$stop_times)
