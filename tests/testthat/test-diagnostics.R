@@ -209,3 +209,32 @@ test_that("the coverage warning and diagnostics print are stable", {
   expect_snapshot(cat(diagnostics_warning_message(diag)))
   expect_snapshot(print(diag))
 })
+
+test_that("max_trip_duration_mins reports the longest extracted trip", {
+  # A mis-segmented run merges a whole shift into one "trip" while the trip
+  # count stays plausible, so the duration is the metric that shows it. It is
+  # reported, never judged: no threshold, no warning.
+  inputs <- make_route_inputs()
+  result <- suppressMessages(g2g_extract_trips_and_stop_times(
+    gps_data = make_rt_trajectory(),
+    terminals_data = inputs$terminals,
+    stops_data = inputs$stops,
+    terminals_buffer_radius = 100,
+    stops_buffer_radius = 100,
+    stops_extended_buffer_radius = 150,
+    trip_col = "trip_id"
+  ))
+
+  diag <- g2g_diagnostics(result)
+  longest <- diagnostics_value(diag, "max_trip_duration_mins")
+  expect_false(is.na(longest))
+  expect_identical(
+    longest,
+    as.integer(round(max(result$trips$duration_in_mins)))
+  )
+})
+
+test_that("max_trip_duration_mins is NA when nothing was extracted", {
+  expect_identical(max_trip_duration_metric(NULL), NA_integer_)
+  expect_identical(max_trip_duration_metric(empty_trip_features()), NA_integer_)
+})

@@ -131,3 +131,96 @@ test_that("derived tables run through the pipeline with the identity map", {
   expect_true(nrow(result$stop_times) > 0L)
   expect_true(all(result$stop_times$stop_id %in% c("S1", "S2")))
 })
+
+test_that("numeric stop ids survive without scientific notation", {
+  # as.character(1e5) is "1e+05", which silently breaks every downstream id
+  # join and looks exactly like "the helper shares no stop ids with my data".
+  gtfs <- list(
+    routes = data.frame(route_id = 1, route_type = 3),
+    trips = data.frame(trip_id = c("t1", "t2"), route_id = 1, service_id = "s1"),
+    stop_times = data.frame(
+      trip_id = rep(c("t1", "t2"), each = 3),
+      stop_id = c(100000, 200000, 300000, 300000, 200000, 100000),
+      stop_sequence = rep(1:3, 2)
+    ),
+    stops = data.frame(
+      stop_id = c(100000, 200000, 300000),
+      stop_lat = c(7.29, 7.30, 7.31),
+      stop_lon = c(80.63, 80.64, 80.65)
+    )
+  )
+
+  terminals <- g2g_terminals_from_gtfs(gtfs, route_id = 1)
+  expect_setequal(terminals$terminal_id, c("100000", "300000"))
+  expect_false(any(grepl("e+", terminals$terminal_id, fixed = TRUE)))
+
+  stops <- g2g_stops_from_gtfs(gtfs, route_id = 1)
+  expect_identical(unique(stops$stop_id), "200000")
+})
+
+test_that("g2g_stops_from_gtfs warns when trips are dropped", {
+  gtfs <- make_gtfs()
+  # A short turn that starts mid-route: it belongs to no direction group and
+  # its stops silently vanish from the result.
+  gtfs$trips <- rbind(
+    gtfs$trips,
+    data.frame(trip_id = "t5", route_id = "r1", service_id = "s1")
+  )
+  gtfs$stop_times <- rbind(
+    gtfs$stop_times,
+    data.frame(
+      trip_id = "t5",
+      stop_id = c("S1", "S2"),
+      stop_sequence = 1:2
+    )
+  )
+
+  # The added short turn also drops endpoint coverage below 90%, so more than
+  # one warning fires; assert over all of them rather than just the first.
+  warns <- testthat::capture_warnings(g2g_stops_from_gtfs(gtfs, route_id = "r1"))
+  expect_true(any(grepl("do not start at either derived terminal", warns)))
+})
+
+test_that("two platforms of one place are flagged, not returned silently", {
+  gtfs <- list(
+    routes = data.frame(route_id = "r1", route_type = 3),
+    trips = data.frame(trip_id = c("t1", "t2"), route_id = "r1", service_id = "s1"),
+    stop_times = data.frame(
+      trip_id = rep(c("t1", "t2"), each = 3),
+      # A1 and A2 are two platforms ~25 m apart at the same terminal
+      stop_id = c("A1", "S1", "A2", "A2", "S1", "A1"),
+      stop_sequence = rep(1:3, 2)
+    ),
+    stops = data.frame(
+      stop_id = c("A1", "A2", "S1"),
+      stop_lat = c(7.2900, 7.29020, 7.3000),
+      stop_lon = c(80.6300, 80.63010, 80.6400)
+    )
+  )
+
+  warns <- testthat::capture_warnings(g2g_terminals_from_gtfs(gtfs, route_id = "r1"))
+  expect_true(any(grepl("platforms of the same place", warns)))
+})
+
+test_that("the loop-route error points at layover segmentation", {
+  gtfs <- list(
+    routes = data.frame(route_id = "r1", route_type = 3),
+    trips = data.frame(trip_id = c("t1", "t2"), route_id = "r1", service_id = "s1"),
+    stop_times = data.frame(
+      trip_id = rep(c("t1", "t2"), each = 3),
+      stop_id = c("A", "S1", "A", "A", "S2", "A"),
+      stop_sequence = rep(1:3, 2)
+    ),
+    stops = data.frame(
+      stop_id = c("A", "S1", "S2"),
+      stop_lat = c(7.29, 7.30, 7.31),
+      stop_lon = c(80.63, 80.64, 80.65)
+    )
+  )
+
+  expect_error(
+    g2g_terminals_from_gtfs(gtfs, route_id = "r1"),
+    'segmentation = "layover"',
+    fixed = TRUE
+  )
+})

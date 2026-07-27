@@ -67,7 +67,12 @@ Rcpp, then pure R. Explicit unavailable backends produce an error.}
 projected. Out-of-bounds coordinates require explicit \code{TRUE}.}
 
 \item{stop_direction_map}{Optional named character vector mapping each raw
-stop-direction label to its starting terminal ID.}
+stop-direction label to its starting terminal ID. When omitted and the
+labels are not terminal IDs already, the two labels are paired with the
+two terminals \emph{by order of appearance} in \code{stops_data} - which
+silently reverses every direction if that order is not the one you meant.
+The pairing chosen is reported as an \code{[INFO]} message; supply this
+argument to fix it explicitly.}
 
 \item{vehicle_col}{Character. Name of the vehicle identifier column in
 \code{gps_data}. Default \code{"vehicle_id"} (GTFS-Realtime convention).}
@@ -101,7 +106,13 @@ rather than inferred from which of two terminals a trip started at, so
 two-terminal lines (short-turns, variants, one-way services) are handled.
 For stop-time extraction, stops are grouped for matching by their
 \code{direction} label, which must use the same values as
-\code{direction_col}. Default \code{NULL}.}
+\code{direction_col}. This column labels a trip's direction; it does not
+cut trips. A trip has exactly one direction, so if \code{direction_col}
+takes more than one value inside a segment that \code{trip_col} declared
+to be one trip, the two inputs contradict each other and extraction stops
+with an error: either add the direction column to \code{trip_col} to
+segment by it, or collapse it to one value per supplied trip identity.
+Default \code{NULL}.}
 
 \item{session_gap}{Numeric. Successive observations of a vehicle further
 apart than this many seconds start a new driving session; trips never

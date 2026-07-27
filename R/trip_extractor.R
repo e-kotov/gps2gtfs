@@ -214,15 +214,62 @@ extract_trips_from_ids_r <- function(
     return(empty_result())
   }
 
-  # Capture the supplied direction per trip (first non-missing value in the
-  # segment) before collapsing to bounds, so direction can come from the data
-  # instead of terminal inference.
+  # Capture the supplied direction per trip before collapsing to bounds, so
+  # direction can come from the data instead of terminal inference.
+  #
+  # A GTFS trip has exactly one direction - direction_id is a trip-level
+  # attribute, constant within a trip by definition. So if `direction_col`
+  # takes more than one value inside a segment that `trip_col` declared to be
+  # one trip, the two supplied inputs contradict each other about where trips
+  # end, and there is no safe way to pick a winner: silently keeping the first
+  # value emits a trip whose own input data says it is not one (an out-and-back
+  # merged into a single multi-hour "trip" that directional routing rejects).
+  # Refuse, and name both resolutions. Note the check fires on the conflict,
+  # not on the configuration: well-formed GTFS-Realtime carries a constant
+  # direction_id per trip_id, so it never triggers there.
   if (!is.null(direction_col)) {
-    seg_dt[, rt_direction := {
-      v <- as.character(.SD[[direction_col]])
-      v <- v[!is.na(v) & nzchar(trimws(v))]
-      if (length(v) > 0L) v[1L] else NA_character_
-    }, by = trip_id, .SDcols = direction_col]
+    dir_summary <- seg_dt[,
+      {
+        v <- as.character(.SD[[direction_col]])
+        v <- unique(v[!is.na(v) & nzchar(trimws(v))])
+        .(
+          rt_direction = if (length(v) > 0L) v[1L] else NA_character_,
+          n_directions = length(v),
+          span_mins = as.numeric(difftime(
+            max(timestamp),
+            min(timestamp),
+            units = "mins"
+          ))
+        )
+      },
+      by = trip_id,
+      .SDcols = direction_col
+    ]
+
+    conflicted <- dir_summary[n_directions > 1L]
+    if (nrow(conflicted) > 0L) {
+      stop(
+        "'direction_col' (\"",
+        direction_col,
+        "\") takes more than one value inside ",
+        nrow(conflicted),
+        " of the ",
+        nrow(dir_summary),
+        " segment(s) defined by 'trip_col' (\"",
+        paste(trip_col, collapse = "\", \""),
+        "\"); the longest such segment spans ",
+        round(max(conflicted$span_mins)),
+        " minutes. A trip has one direction, so these inputs disagree about ",
+        "where trips end. Either segment by direction as well - trip_col = ",
+        "c(\"",
+        paste(c(trip_col, direction_col), collapse = "\", \""),
+        "\") - or drop 'direction_col' (or collapse it to one value per ",
+        "supplied trip identity) to keep the merged segments.",
+        call. = FALSE
+      )
+    }
+
+    seg_dt[dir_summary, rt_direction := i.rt_direction, on = "trip_id"]
   }
 
   # Renumber to consecutive integers, then keep first/last ping per trip

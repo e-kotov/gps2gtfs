@@ -81,7 +81,13 @@ rather than inferred from which of two terminals a trip started at, so
 two-terminal lines (short-turns, variants, one-way services) are handled.
 For stop-time extraction, stops are grouped for matching by their
 \code{direction} label, which must use the same values as
-\code{direction_col}. Default \code{NULL}.}
+\code{direction_col}. This column labels a trip's direction; it does not
+cut trips. A trip has exactly one direction, so if \code{direction_col}
+takes more than one value inside a segment that \code{trip_col} declared
+to be one trip, the two inputs contradict each other and extraction stops
+with an error: either add the direction column to \code{trip_col} to
+segment by it, or collapse it to one value per supplied trip identity.
+Default \code{NULL}.}
 
 \item{session_gap}{Numeric. Successive observations of a vehicle further
 apart than this many seconds start a new driving session; trips never

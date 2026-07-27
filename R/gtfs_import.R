@@ -67,14 +67,14 @@ gtfs_trip_endpoints <- function(gtfs, route_id) {
     stop("'route_id' must be a single route identifier.", call. = FALSE)
   }
   # Computed outside `[` so the argument is not shadowed by the route_id column
-  keep_trip <- as.character(trips$route_id) == as.character(route_id)
+  keep_trip <- as_id_chr(trips$route_id) == as_id_chr(route_id)
   route_trips <- trips[which(keep_trip)]
   if (nrow(route_trips) == 0L) {
     stop(
       "route_id '",
       route_id,
       "' not found in trips.txt. Available: ",
-      paste(utils::head(unique(as.character(trips$route_id)), 20), collapse = ", "),
+      paste(utils::head(unique(as_id_chr(trips$route_id)), 20), collapse = ", "),
       call. = FALSE
     )
   }
@@ -98,8 +98,8 @@ gtfs_trip_endpoints <- function(gtfs, route_id) {
 
   endpoints <- st[,
     .(
-      first_stop = as.character(stop_id[1L]),
-      last_stop = as.character(stop_id[.N])
+      first_stop = as_id_chr(stop_id[1L]),
+      last_stop = as_id_chr(stop_id[.N])
     ),
     by = trip_id
   ]
@@ -113,6 +113,13 @@ gtfs_trip_endpoints <- function(gtfs, route_id) {
 #' \code{stop_times.txt}). The result feeds directly into
 #' \code{terminals_data} of \code{\link{g2g_extract_trips}} and
 #' \code{\link{g2g_extract_trips_and_stop_times}}.
+#'
+#' Frequency ranking cannot tell two ends of a line from two platforms of one
+#' place, so the function warns when fewer than 90\% of trip endpoints match
+#' the two it derived (variants or branches) and when the two are close enough
+#' together to be the same physical terminal under platform-level
+#' \code{stop_id}s. Loop routes have no two terminals at all and error; use
+#' \code{segmentation = "layover"} for those.
 #'
 #' @param gtfs A GTFS feed object (named list of data.frames, as returned by
 #'   \code{gtfsio::import_gtfs()} or \code{gtfstools::read_gtfs()}) or a path
@@ -150,7 +157,8 @@ g2g_terminals_from_gtfs <- function(gtfs, route_id) {
       "route_id '",
       route_id,
       "' has fewer than two distinct trip endpoints (loop route?); ",
-      "terminals cannot be derived automatically.",
+      "terminals cannot be derived automatically. Loop routes are segmented ",
+      "with segmentation = \"layover\", which needs no terminals_data.",
       call. = FALSE
     )
   }
@@ -172,7 +180,7 @@ g2g_terminals_from_gtfs <- function(gtfs, route_id) {
     "stops",
     c("stop_id", "stop_lat", "stop_lon")
   )
-  stops <- stops[as.character(stops$stop_id) %in% terminal_ids]
+  stops <- stops[as_id_chr(stops$stop_id) %in% terminal_ids]
   if (nrow(stops) < 2L) {
     stop(
       "Terminal stop ids (",
@@ -183,12 +191,36 @@ g2g_terminals_from_gtfs <- function(gtfs, route_id) {
   }
 
   out <- data.table::data.table(
-    terminal_id = as.character(stops$stop_id),
+    terminal_id = as_id_chr(stops$stop_id),
     latitude = as.double(stops$stop_lat),
     longitude = as.double(stops$stop_lon)
   )
   # Keep frequency order: most common endpoint first
-  out[match(terminal_ids, out$terminal_id)]
+  out <- out[match(terminal_ids, out$terminal_id)]
+
+  # Two terminals a few metres apart are not two ends of a route: they are two
+  # platforms (or two direction-specific stop_ids) at the same physical place,
+  # which the frequency ranking cannot tell apart. Segmentation would then cut
+  # trips at a single location and direction would be meaningless, so say so.
+  separation <- haversine_m_r(
+    out$latitude[1L],
+    out$longitude[1L],
+    out$latitude[2L],
+    out$longitude[2L]
+  )
+  if (is.finite(separation) && separation < terminal_separation_floor_m) {
+    warning(
+      "The two derived terminals (",
+      paste(out$terminal_id, collapse = ", "),
+      ") are only ",
+      round(separation),
+      " m apart, so they are probably two platforms of the same place rather ",
+      "than the two ends of the route. Group them (e.g. by parent_station) ",
+      "and pass terminals_data yourself, or use segmentation = \"layover\".",
+      call. = FALSE
+    )
+  }
+  out[]
 }
 
 #' Derive a Stops Table from a Static GTFS Feed
@@ -199,7 +231,13 @@ g2g_terminals_from_gtfs <- function(gtfs, route_id) {
 #' direction group they belong to. Direction labels are the \code{terminal_id}
 #' a trip starts from, so they map onto the terminals derived by
 #' \code{\link{g2g_terminals_from_gtfs}} without a manual
-#' \code{stop_direction_map}.
+#' \code{stop_direction_map}. Note this means the labels are terminal
+#' \code{stop_id}s, not GTFS \code{direction_id} values; they are not
+#' interchangeable with a \code{direction_col} taken from the positions.
+#'
+#' Trips that start at neither derived terminal have no direction group and are
+#' dropped with a warning, so stops served only by short turns or branch
+#' variants do not appear in the result.
 #'
 #' @inheritParams g2g_terminals_from_gtfs
 #' @return A data.table with columns \code{stop_id}, \code{latitude},
@@ -228,13 +266,32 @@ g2g_stops_from_gtfs <- function(gtfs, route_id) {
   terminal_ids <- terminals$terminal_id
   endpoints <- gtfs_trip_endpoints(gtfs, route_id)
 
-  # Direction group of each trip = the terminal it starts from
+  # Direction group of each trip = the terminal it starts from. Trips that
+  # start anywhere else (short turns, branch variants, a second platform of
+  # the same terminal) have no direction group and are dropped - which
+  # silently shrinks the stop set, so report how many went.
+  n_trips_total <- nrow(endpoints)
   endpoints <- endpoints[endpoints$first_stop %in% terminal_ids]
   if (nrow(endpoints) == 0L) {
     stop(
       "No trips of route_id '",
       route_id,
       "' start at a derived terminal; cannot assign stop directions.",
+      call. = FALSE
+    )
+  }
+  n_dropped_trips <- n_trips_total - nrow(endpoints)
+  if (n_dropped_trips > 0L) {
+    warning(
+      n_dropped_trips,
+      " of ",
+      n_trips_total,
+      " trip(s) on route_id '",
+      route_id,
+      "' do not start at either derived terminal (",
+      paste(terminal_ids, collapse = ", "),
+      ") and were dropped, so stops served only by those trips are missing ",
+      "from the result. Short turns and branch variants look like this.",
       call. = FALSE
     )
   }
@@ -245,7 +302,7 @@ g2g_stops_from_gtfs <- function(gtfs, route_id) {
     c("trip_id", "stop_id", "stop_sequence")
   )
   st <- st[st$trip_id %in% endpoints$trip_id]
-  st[, stop_id := as.character(stop_id)]
+  st[, stop_id := as_id_chr(stop_id)]
   st <- merge(
     st,
     endpoints[, .(trip_id, direction = first_stop)],
@@ -258,7 +315,7 @@ g2g_stops_from_gtfs <- function(gtfs, route_id) {
 
   stops <- get_gtfs_table(gtfs, "stops", c("stop_id", "stop_lat", "stop_lon"))
   stops <- stops[, .(
-    stop_id = as.character(stop_id),
+    stop_id = as_id_chr(stop_id),
     latitude = as.double(stop_lat),
     longitude = as.double(stop_lon)
   )]

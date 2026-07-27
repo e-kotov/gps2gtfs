@@ -30,5 +30,6 @@
        9:        trips       pings_assigned_to_trips  1397
       10:        trips     pings_dropped_not_in_trip   686
       11:        trips                    trips_kept     6
-      12:        stops               stop_times_kept    81
+      12:        trips        max_trip_duration_mins    NA
+      13:        stops               stop_times_kept    81
 

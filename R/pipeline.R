@@ -67,7 +67,13 @@ is_rust_available <- function() {
 #'   two-terminal lines (short-turns, variants, one-way services) are handled.
 #'   For stop-time extraction, stops are grouped for matching by their
 #'   \code{direction} label, which must use the same values as
-#'   \code{direction_col}. Default \code{NULL}.
+#'   \code{direction_col}. This column labels a trip's direction; it does not
+#'   cut trips. A trip has exactly one direction, so if \code{direction_col}
+#'   takes more than one value inside a segment that \code{trip_col} declared
+#'   to be one trip, the two inputs contradict each other and extraction stops
+#'   with an error: either add the direction column to \code{trip_col} to
+#'   segment by it, or collapse it to one value per supplied trip identity.
+#'   Default \code{NULL}.
 #' @param session_gap Numeric. Successive observations of a vehicle further
 #'   apart than this many seconds start a new driving session; trips never
 #'   span sessions. This replaces the former calendar-date boundary, so
@@ -311,7 +317,8 @@ g2g_extract_trips <- function(
     clean_drops,
     pings_after_cleaning = nrow(cleaned),
     seg_drops,
-    trips_kept = nrow(trip_features)
+    trips_kept = nrow(trip_features),
+    max_trip_duration_mins = max_trip_duration_metric(trip_features)
   ))
   trip_features <- set_diagnostics(trip_features, diag)
 
@@ -354,7 +361,12 @@ g2g_extract_trips <- function(
 #' @param projected Logical. Whether plain-table coordinates are already
 #'   projected. Out-of-bounds coordinates require explicit \code{TRUE}.
 #' @param stop_direction_map Optional named character vector mapping each raw
-#'   stop-direction label to its starting terminal ID.
+#'   stop-direction label to its starting terminal ID. When omitted and the
+#'   labels are not terminal IDs already, the two labels are paired with the
+#'   two terminals \emph{by order of appearance} in \code{stops_data} - which
+#'   silently reverses every direction if that order is not the one you meant.
+#'   The pairing chosen is reported as an \code{[INFO]} message; supply this
+#'   argument to fix it explicitly.
 #' @param vehicle_col Character. Name of the vehicle identifier column in
 #'   \code{gps_data}. Default \code{"vehicle_id"} (GTFS-Realtime convention).
 #' @param time_col Character. Name of the timestamp column in \code{gps_data}.
@@ -383,7 +395,13 @@ g2g_extract_trips <- function(
 #'   two-terminal lines (short-turns, variants, one-way services) are handled.
 #'   For stop-time extraction, stops are grouped for matching by their
 #'   \code{direction} label, which must use the same values as
-#'   \code{direction_col}. Default \code{NULL}.
+#'   \code{direction_col}. This column labels a trip's direction; it does not
+#'   cut trips. A trip has exactly one direction, so if \code{direction_col}
+#'   takes more than one value inside a segment that \code{trip_col} declared
+#'   to be one trip, the two inputs contradict each other and extraction stops
+#'   with an error: either add the direction column to \code{trip_col} to
+#'   segment by it, or collapse it to one value per supplied trip identity.
+#'   Default \code{NULL}.
 #' @param session_gap Numeric. Successive observations of a vehicle further
 #'   apart than this many seconds start a new driving session; trips never
 #'   span sessions. This replaces the former calendar-date boundary, so
@@ -860,6 +878,7 @@ g2g_extract_trips_and_stop_times <- function(
     pings_assigned_to_trips = nrow(trajectory),
     pings_dropped_not_in_trip = nrow(cleaned) - nrow(trajectory),
     trips_kept = nrow(trip_features),
+    max_trip_duration_mins = max_trip_duration_metric(trip_features),
     stop_times_kept = nrow(stop_times)
   ))
 

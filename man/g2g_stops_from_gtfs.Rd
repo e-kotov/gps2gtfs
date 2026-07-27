@@ -27,7 +27,13 @@ GTFS feed: all non-terminal stops served by a route, labeled with the
 direction group they belong to. Direction labels are the \code{terminal_id}
 a trip starts from, so they map onto the terminals derived by
 \code{\link{g2g_terminals_from_gtfs}} without a manual
-\code{stop_direction_map}.
+\code{stop_direction_map}. Note this means the labels are terminal
+\code{stop_id}s, not GTFS \code{direction_id} values; they are not
+interchangeable with a \code{direction_col} taken from the positions.
+
+Trips that start at neither derived terminal have no direction group and are
+dropped with a warning, so stops served only by short turns or branch
+variants do not appear in the result.
 }
 \examples{
 gtfs <- list(
