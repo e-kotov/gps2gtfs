@@ -167,22 +167,42 @@ resolve_stop_directions <- function(
       # map each onto itself instead of pairing by order of appearance.
       stop_direction_map <- stats::setNames(labels, labels)
     } else {
-      # Nothing in the data says which label belongs to which terminal, so the
-      # two are paired by order of appearance - and the order of appearance of
-      # the stop labels follows whatever order the caller happened to build
-      # stops_df in. A silent swap here reverses every direction in the output,
-      # so state the pairing chosen. Pass 'stop_direction_map' to fix it.
-      stop_direction_map <- stats::setNames(terminal_ids, labels)
-      message(
-        "[INFO] Pairing stop direction labels to terminals by order of ",
-        "appearance: ",
-        paste(
-          names(stop_direction_map),
-          unname(stop_direction_map),
-          sep = " -> ",
-          collapse = ", "
-        ),
-        ". Pass 'stop_direction_map' to set this explicitly."
+      # Which label belongs to which terminal is not in the data. Both
+      # direction groups span the same corridor, so they sit at the same
+      # distance from both terminals and geometry cannot separate them; the
+      # only other signal would be inferring travel orientation, which is not
+      # authorized. The answer exists solely in the caller's head.
+      #
+      # This used to be resolved by pairing the two labels with the two
+      # terminals in order of appearance - and the labels' order of appearance
+      # follows whatever order the caller happened to build stops_df in. That
+      # is a coin flip, and losing it reverses every direction in the output
+      # while still producing plausible stop_times, because each ping then
+      # matches the opposite-direction stop across the street. Refuse, and
+      # print both candidate maps so the right one can be pasted in.
+      candidates <- vapply(
+        list(terminal_ids, rev(terminal_ids)),
+        function(ids) {
+          paste0(
+            "  stop_direction_map = c(",
+            paste0("\"", labels, "\" = \"", ids, "\"", collapse = ", "),
+            ")"
+          )
+        },
+        character(1)
+      )
+      stop(
+        "'stops_df' labels its direction groups with values that are not ",
+        "terminal IDs (",
+        paste0("\"", labels, "\"", collapse = ", "),
+        "), and 'stop_direction_map' was not supplied. Which label belongs to ",
+        "which terminal is not recoverable from the data - both groups span ",
+        "the same corridor - and getting it backwards silently reverses every ",
+        "direction in the output. Supply one of:\n",
+        paste(candidates, collapse = "\n"),
+        "\nEach label maps to the terminal that trips in that direction start ",
+        "from.",
+        call. = FALSE
       )
     }
   } else {

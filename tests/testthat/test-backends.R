@@ -1,4 +1,9 @@
-run_fixture <- function(backend = "auto", stop_direction_map = NULL) {
+# BT01 is Kandy, BT02 is Digana, so each label maps to the terminal its trips
+# start from. The map is required: the pairing is not derivable from the data.
+fixture_direction_map <- c("Kandy-Digana" = "BT01", "Digana-Kandy" = "BT02")
+
+run_fixture <- function(backend = "auto",
+                        stop_direction_map = fixture_direction_map) {
   g2g_extract_trips_and_stop_times(
     gps_data = g2g_data_gps,
     terminals_data = g2g_data_terminals,
@@ -261,7 +266,10 @@ test_that("empty inputs and no matches return stable typed schemas", {
     stops_data = g2g_data_stops,
     terminals_buffer_radius = 100,
     stops_buffer_radius = 50,
-    stops_extended_buffer_radius = 100
+    stops_extended_buffer_radius = 100,
+    # Inputs are validated before the empty-data early return, so a missing
+    # direction map is still an error on a day with no pings.
+    stop_direction_map = fixture_direction_map
   )
   expect_identical(names(result$trips), names(empty_trip_features()))
   expect_identical(names(result$stop_times), names(empty_stop_times()))
@@ -315,6 +323,7 @@ test_that("no stop matches return the documented empty schema for every backend"
       terminals_buffer_radius = 100,
       stops_buffer_radius = 50,
       stops_extended_buffer_radius = 100,
+      stop_direction_map = fixture_direction_map,
       backend = backend
     )
     expect_identical(names(result$stop_times), names(empty_stop_times()))
@@ -333,12 +342,32 @@ test_that("stop directions accept text and numeric labels", {
     )
   }
 
+  # Labels of any type work, but the map is what pairs them to terminals -
+  # order of appearance no longer does.
   expect_identical(
-    resolve_stop_directions(make_stops(c("out", "back")), terminals),
+    resolve_stop_directions(
+      make_stops(c("out", "back")),
+      terminals,
+      c(out = "A", back = "B")
+    ),
     1:2
   )
-  expect_identical(resolve_stop_directions(make_stops(c(0, 1)), terminals), 1:2)
-  expect_identical(resolve_stop_directions(make_stops(c(1, 2)), terminals), 1:2)
+  expect_identical(
+    resolve_stop_directions(
+      make_stops(c(0, 1)),
+      terminals,
+      c("0" = "A", "1" = "B")
+    ),
+    1:2
+  )
+  expect_identical(
+    resolve_stop_directions(
+      make_stops(c(1, 2)),
+      terminals,
+      c("1" = "A", "2" = "B")
+    ),
+    1:2
+  )
   expect_identical(
     resolve_stop_directions(
       make_stops(c("out", "back")),
@@ -370,13 +399,65 @@ test_that("invalid stop direction maps produce actionable errors", {
   )
 })
 
-test_that("explicit direction maps override fixture input order", {
-  result <- run_fixture(
+test_that("the direction map is load-bearing, not decorative", {
+  # Swapping it must change which stops each direction's trips are matched
+  # against. If this ever stops being true, the map has quietly become inert
+  # and the argument is no longer protecting anything.
+  correct <- run_fixture()
+  swapped <- run_fixture(
     stop_direction_map = c(
-      "Kandy-Digana" = "BT01",
-      "Digana-Kandy" = "BT02"
+      "Kandy-Digana" = "BT02",
+      "Digana-Kandy" = "BT01"
     )
   )
-  expect_equal(nrow(result$trips) > 0L, TRUE)
-  expect_equal(nrow(result$stop_times) > 0L, TRUE)
+
+  expect_true(nrow(correct$stop_times) > 0L)
+  key <- function(x) paste(x$trip_id, x$stop_id)
+  expect_false(setequal(key(correct$stop_times), key(swapped$stop_times)))
+})
+
+test_that("an underivable direction pairing is refused, not guessed", {
+  # Which of "Kandy-Digana"/"Digana-Kandy" starts at BT01 is not in the data:
+  # both groups span the same corridor. Pairing them by order of appearance
+  # would be a coin flip that silently reverses every direction.
+  err <- tryCatch(
+    run_fixture(stop_direction_map = NULL),
+    error = function(e) conditionMessage(e)
+  )
+
+  expect_match(err, "not recoverable from the data", fixed = TRUE)
+  # Both candidate maps are offered, ready to paste.
+  expect_match(
+    err,
+    'stop_direction_map = c("Kandy-Digana" = "BT01", "Digana-Kandy" = "BT02")',
+    fixed = TRUE
+  )
+  expect_match(
+    err,
+    'stop_direction_map = c("Kandy-Digana" = "BT02", "Digana-Kandy" = "BT01")',
+    fixed = TRUE
+  )
+})
+
+test_that("labels that are terminal ids still need no map", {
+  # g2g_stops_from_gtfs() labels directions with the starting terminal_id, so
+  # the mapping is already unambiguous and must keep working unprompted.
+  stops <- as.data.frame(g2g_data_stops)
+  stops$direction <- ifelse(
+    stops$direction == "Kandy-Digana",
+    "BT01",
+    "BT02"
+  )
+  expect_no_error(
+    result <- suppressMessages(g2g_extract_trips_and_stop_times(
+      gps_data = g2g_data_gps,
+      terminals_data = g2g_data_terminals,
+      stops_data = stops,
+      terminals_buffer_radius = 100,
+      stops_buffer_radius = 50,
+      stops_extended_buffer_radius = 100,
+      stop_direction_map = NULL
+    ))
+  )
+  expect_true(nrow(result$stop_times) > 0L)
 })
