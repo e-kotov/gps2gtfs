@@ -54,13 +54,30 @@ prepare_trajectory_r <- function(
     return(empty_trajectory(cleaned_gps_dt))
   }
 
-  # Merge trip_id from trips_dt into cleaned_gps_dt. A passthrough column
-  # named trip_id (e.g. the GTFS-RT annotation) would collide with the
-  # pipeline's internal trip numbering; drop it here — it has already been
-  # consumed by segmentation at this point.
-  if ("trip_id" %in% names(cleaned_gps_dt)) {
+  # Drop passthrough GPS columns whose names the stop-matching stage owns.
+  # `trip_id` (e.g. the GTFS-RT annotation) would collide with the pipeline's
+  # internal trip numbering; `direction` with the trip-level direction merged
+  # in below, whose absence silently empties every direction group;
+  # `bus_stop`/`stop_id` with the matcher's own output; `grouped_ends` with the
+  # contiguous-visit key in extract_stops_r(). All of them have already been
+  # consumed by segmentation at this point, and the official supplied trip
+  # identity survives separately as `provided_trip_id`.
+  reserved <- intersect(trajectory_reserved_cols, names(cleaned_gps_dt))
+  if (length(reserved) > 0L) {
     cleaned_gps_dt <- data.table::copy(cleaned_gps_dt)
-    cleaned_gps_dt[, trip_id := NULL]
+    cleaned_gps_dt[, (reserved) := NULL]
+    # A passthrough `trip_id` is the expected GTFS-RT input and is consumed
+    # deliberately, so it stays silent. Any other collision is accidental and
+    # loses a column the caller supplied, so say so.
+    unexpected <- setdiff(reserved, "trip_id")
+    if (length(unexpected) > 0L) {
+      message(
+        "[INFO] Dropped passthrough GPS column(s) whose names are reserved by ",
+        "stop extraction: ",
+        paste(unexpected, collapse = ", "),
+        ". Rename them in 'gps_data' to keep them in the output."
+      )
+    }
   }
   merged_dt <- merge(
     cleaned_gps_dt,
@@ -150,7 +167,23 @@ resolve_stop_directions <- function(
       # map each onto itself instead of pairing by order of appearance.
       stop_direction_map <- stats::setNames(labels, labels)
     } else {
+      # Nothing in the data says which label belongs to which terminal, so the
+      # two are paired by order of appearance - and the order of appearance of
+      # the stop labels follows whatever order the caller happened to build
+      # stops_df in. A silent swap here reverses every direction in the output,
+      # so state the pairing chosen. Pass 'stop_direction_map' to fix it.
       stop_direction_map <- stats::setNames(terminal_ids, labels)
+      message(
+        "[INFO] Pairing stop direction labels to terminals by order of ",
+        "appearance: ",
+        paste(
+          names(stop_direction_map),
+          unname(stop_direction_map),
+          sep = " -> ",
+          collapse = ", "
+        ),
+        ". Pass 'stop_direction_map' to set this explicitly."
+      )
     }
   } else {
     if (

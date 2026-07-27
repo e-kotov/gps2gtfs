@@ -162,6 +162,38 @@ validate_required_columns <- function(dt, required, name) {
   }
 }
 
+# Column names that the stop-matching stage owns. A GPS frame may carry
+# columns of its own with these names (g2g_clean_gps() passes everything
+# through), and each one would collide with an internal of the same name -
+# silently emptying every direction group, or shadowing the matcher's output.
+# prepare_trajectory_r() drops them from the trajectory before matching.
+trajectory_reserved_cols <- c(
+  "trip_id",
+  "direction",
+  "bus_stop",
+  "stop_id",
+  "grouped_ends"
+)
+
+# Below this separation, the two most frequent trip endpoints of a route are
+# treated as suspicious in g2g_terminals_from_gtfs(): platforms of one place,
+# not the two ends of a line. Generous enough that a genuinely short shuttle
+# does not trip it, tight enough to catch platform-level stop_id pairs.
+terminal_separation_floor_m <- 150
+
+# Coerce an identifier column to character without inviting scientific
+# notation. as.character() on a double renders 1e5 as "1e+05", which silently
+# breaks every downstream id join; format() with scientific = FALSE does not.
+# Integers, characters and factors go through as.character() unchanged.
+as_id_chr <- function(x) {
+  if (is.double(x)) {
+    out <- format(x, scientific = FALSE, trim = TRUE)
+    out[is.na(x)] <- NA_character_
+    return(out)
+  }
+  as.character(x)
+}
+
 validate_identifiers <- function(x, name) {
   values <- as.character(x)
   if (anyNA(values) || any(!nzchar(trimws(values)))) {

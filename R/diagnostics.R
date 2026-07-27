@@ -22,6 +22,7 @@ g2g_diagnostics_schema <- function() {
       "trips",
       "trips",
       "trips",
+      "trips",
       "stops"
     ),
     metric = c(
@@ -36,9 +37,32 @@ g2g_diagnostics_schema <- function() {
       "pings_assigned_to_trips",
       "pings_dropped_not_in_trip",
       "trips_kept",
+      # Reported, never judged: a mis-segmented run merges a whole shift into
+      # one "trip", and no other metric shows it - the trip count can be off by
+      # 1% while boundaries are badly wrong. There is no threshold worth
+      # hard-coding (a long-distance coach trip really can run for hours), so
+      # surface the number and let the caller decide.
+      "max_trip_duration_mins",
       "stop_times_kept"
     )
   )
+}
+
+# Longest extracted trip, in whole minutes, for the `max_trip_duration_mins`
+# metric. NA when nothing was extracted, so an empty run does not report 0.
+max_trip_duration_metric <- function(trip_features) {
+  if (
+    is.null(trip_features) ||
+      nrow(trip_features) == 0L ||
+      !"duration_in_mins" %in% names(trip_features)
+  ) {
+    return(NA_integer_)
+  }
+  longest <- suppressWarnings(max(trip_features$duration_in_mins, na.rm = TRUE))
+  if (!is.finite(longest)) {
+    return(NA_integer_)
+  }
+  as.integer(round(longest))
 }
 
 # Drop metrics worth warning about: every "dropped" metric except routine

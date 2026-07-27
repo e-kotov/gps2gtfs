@@ -260,3 +260,93 @@ test_that("no terminals and no direction_col errors", {
     "terminals_data' is required"
   )
 })
+
+# A trip has exactly one direction, so a `direction_col` that changes inside a
+# segment `trip_col` declared to be one trip means the two supplied inputs
+# disagree about where trips end. Taking the first value (the old behaviour)
+# emitted an out-and-back merged into a single multi-hour "trip" that
+# directional routing rejects, with nothing said. Refuse instead.
+
+test_that("direction changing inside one supplied trip identity errors", {
+  gps <- make_rt_trajectory()
+  # One route value for the whole day, direction reversing between the two runs
+  gps$route_id <- "R1"
+  gps$dir_flag <- c(rep("0", 4), NA, rep("1", 4))
+  inputs <- make_route_inputs()
+
+  expect_error(
+    suppressMessages(g2g_extract_trips(
+      gps_data = gps,
+      terminals_data = inputs$terminals,
+      terminals_buffer_radius = 100,
+      trip_col = "route_id",
+      direction_col = "dir_flag"
+    )),
+    "takes more than one value"
+  )
+})
+
+test_that("the direction-conflict error names both resolutions", {
+  gps <- make_rt_trajectory()
+  gps$route_id <- "R1"
+  gps$dir_flag <- c(rep("0", 4), NA, rep("1", 4))
+  inputs <- make_route_inputs()
+
+  err <- tryCatch(
+    suppressMessages(g2g_extract_trips(
+      gps_data = gps,
+      terminals_data = inputs$terminals,
+      terminals_buffer_radius = 100,
+      trip_col = "route_id",
+      direction_col = "dir_flag"
+    )),
+    error = function(e) conditionMessage(e)
+  )
+
+  expect_match(err, 'trip_col = c("route_id", "dir_flag")', fixed = TRUE)
+  expect_match(err, "drop 'direction_col'", fixed = TRUE)
+  # Reports the scale of the problem, not just its existence.
+  expect_match(err, "1 of the 1 segment")
+})
+
+test_that("composing direction into trip_col segments the same data", {
+  gps <- make_rt_trajectory()
+  gps$route_id <- "R1"
+  gps$dir_flag <- c(rep("0", 4), NA, rep("1", 4))
+  inputs <- make_route_inputs()
+
+  trips <- suppressMessages(g2g_extract_trips(
+    gps_data = gps,
+    terminals_data = inputs$terminals,
+    terminals_buffer_radius = 100,
+    trip_col = c("route_id", "dir_flag"),
+    direction_col = "dir_flag"
+  ))
+
+  expect_identical(nrow(trips), 2L)
+  expect_identical(trips$direction, c(1L, 2L))
+})
+
+test_that("a direction constant within each trip is untouched", {
+  # The well-formed GTFS-Realtime case: direction_id is a trip-level attribute,
+  # so the conflict check must never fire on it.
+  gps <- make_rt_trajectory()
+  gps$dir_flag <- ifelse(is.na(gps$trip_id) | gps$trip_id == "CS_1", "0", "1")
+  inputs <- make_route_inputs()
+  stops <- inputs$stops
+  stops$direction <- ifelse(stops$direction == "A", "0", "1")
+
+  result <- suppressMessages(g2g_extract_trips_and_stop_times(
+    gps_data = gps,
+    terminals_data = inputs$terminals,
+    stops_data = stops,
+    terminals_buffer_radius = 100,
+    stops_buffer_radius = 100,
+    stops_extended_buffer_radius = 150,
+    trip_col = "trip_id",
+    direction_col = "dir_flag"
+  ))
+
+  expect_identical(nrow(result$trips), 2L)
+  expect_identical(result$trips$direction, c(1L, 2L))
+})

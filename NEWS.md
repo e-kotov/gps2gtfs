@@ -1,6 +1,48 @@
 # gps2gtfs (development version)
 
+## Bug fixes
+
+* Stop extraction no longer breaks when the GPS data carries a column of its
+  own named `direction`. `g2g_clean_gps()` passes unknown columns through, and
+  such a column collided with the trip-level direction merged into the
+  trajectory: every direction group then matched zero pings and extraction
+  failed with an error naming neither the column nor the cause. It affected
+  every segmentation mode, not only the supplied-identity path. Columns whose
+  names stop extraction reserves (`direction`, `bus_stop`, `stop_id`,
+  `grouped_ends`, and the already-handled `trip_id`) are now dropped from the
+  trajectory with a message. `g2g_extract_trips()` was never affected.
+
+* `direction_col` now errors instead of silently discarding data when it takes
+  more than one value inside a segment that `trip_col` declared to be one trip.
+  A trip has exactly one direction, so the two inputs contradict each other;
+  keeping the first value merged an out-and-back into a single multi-hour
+  "trip" that directional routing rejects. The error names both resolutions
+  (add the column to `trip_col`, or collapse it per trip identity). Direction
+  that is constant within each supplied trip identity — the well-formed
+  GTFS-Realtime case — is unaffected.
+
+* `g2g_terminals_from_gtfs()` and `g2g_stops_from_gtfs()` no longer render
+  numeric `stop_id`/`route_id` values in scientific notation (`1e+05`), which
+  silently broke every downstream id join.
+
+* `g2g_stops_from_gtfs()` warns when trips are dropped for not starting at
+  either derived terminal, instead of silently omitting the stops they serve.
+
+* `g2g_terminals_from_gtfs()` warns when the two derived terminals are close
+  enough together to be two platforms of one place rather than the two ends of
+  the route, and its loop-route error now points at `segmentation = "layover"`.
+
+* When `stop_direction_map` is omitted and the stop direction labels are not
+  terminal IDs, the pairing of labels to terminals by order of appearance —
+  which silently reverses every direction if that order is not the intended
+  one — is now reported as a message.
+
 ## New features
+
+* `g2g_diagnostics()` gains `max_trip_duration_mins`, the longest extracted
+  trip. Reported, never judged: a mis-segmented run merges a whole shift into
+  one "trip" while the trip count stays plausible, and no other metric shows
+  it.
 
 * `trips` and `stop_times` gain an additive, versioned set of C5 inference-label
   columns for a future baseline-free orientation/turnaround-detection stage:

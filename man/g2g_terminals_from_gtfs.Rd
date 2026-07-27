@@ -24,6 +24,13 @@ feed: the two most frequent trip endpoints (first/last stop per trip in
 \code{stop_times.txt}). The result feeds directly into
 \code{terminals_data} of \code{\link{g2g_extract_trips}} and
 \code{\link{g2g_extract_trips_and_stop_times}}.
+
+Frequency ranking cannot tell two ends of a line from two platforms of one
+place, so the function warns when fewer than 90\% of trip endpoints match
+the two it derived (variants or branches) and when the two are close enough
+together to be the same physical terminal under platform-level
+\code{stop_id}s. Loop routes have no two terminals at all and error; use
+\code{segmentation = "layover"} for those.
 }
 \examples{
 gtfs <- list(
