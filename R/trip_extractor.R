@@ -615,6 +615,13 @@ extract_trips_r <- function(
         "The 'sf' package is required to run the 'pure_r' backend. Please install it using: install.packages('sf')"
       )
     }
+    terminal_match_col <- ".gps2gtfs_terminal_match"
+    while (terminal_match_col %in% names(cleaned_gps_dt)) {
+      terminal_match_col <- paste0(terminal_match_col, "_")
+    }
+    terminals_for_join <- data.table::copy(trip_terminals_df)
+    terminals_for_join[, (terminal_match_col) := as.character(terminal_id)]
+
     if (projected) {
       gps_sf <- sf::st_as_sf(
         cleaned_gps_dt,
@@ -623,7 +630,7 @@ extract_trips_r <- function(
         remove = FALSE
       )
       terminals_sf <- sf::st_as_sf(
-        trip_terminals_df,
+        terminals_for_join,
         coords = c("longitude", "latitude"),
         crs = if (is.null(projected_crs)) 32644 else projected_crs
       )
@@ -638,18 +645,21 @@ extract_trips_r <- function(
 
       # Convert terminals to sf, project, and buffer
       terminals_sf <- sf::st_as_sf(
-        trip_terminals_df,
+        terminals_for_join,
         coords = c("longitude", "latitude"),
         crs = 4326
       )
       terminals_sf <- sf::st_transform(terminals_sf, projected_crs)
     }
-    terminals_buffer <- sf::st_buffer(terminals_sf, buffer_radius)
+    terminals_buffer <- sf::st_buffer(
+      terminals_sf[terminal_match_col],
+      buffer_radius
+    )
 
     # Spatial join to find points within terminal buffers
     gps_joined <- sf::st_join(
       gps_sf,
-      terminals_buffer["terminal_id"],
+      terminals_buffer,
       join = sf::st_intersects
     )
 
@@ -659,9 +669,16 @@ extract_trips_r <- function(
     # Keep only the first terminal match if a point overlaps multiple buffers
     joined_dt <- unique(joined_dt, by = "id")
 
+    # `bus_stop` is package-owned from this point. Drop a caller's passthrough
+    # column before assigning the terminal match so duplicate names cannot
+    # select the caller's values during terminal grouping.
+    if ("bus_stop" %in% names(joined_dt)) {
+      joined_dt[, bus_stop := NULL]
+    }
+
     # Filter records within terminal buffers
-    terminal_gps_dt <- joined_dt[!is.na(terminal_id)]
-    data.table::setnames(terminal_gps_dt, "terminal_id", "bus_stop")
+    terminal_gps_dt <- joined_dt[!is.na(get(terminal_match_col))]
+    data.table::setnames(terminal_gps_dt, terminal_match_col, "bus_stop")
   }
 
   if (nrow(terminal_gps_dt) == 0L) {
