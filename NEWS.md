@@ -1,4 +1,4 @@
-# gps2gtfs (development version)
+# gps2gtfs 0.3.0
 
 ## Breaking changes
 
