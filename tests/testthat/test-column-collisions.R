@@ -91,6 +91,21 @@ test_that("a passthrough 'stop_id' does not shadow the matched stop", {
   expect_false("not-a-real-stop" %in% collided$stop_times$stop_id)
 })
 
+test_that("a passthrough 'bus_stop' does not change pure R terminal matching", {
+  skip_if_not_installed("sf")
+  clean <- make_rt_trajectory()
+  clean$trip_id <- NULL
+
+  colliding <- clean
+  colliding$bus_stop <- "not-a-terminal"
+
+  baseline <- run_pipeline(clean, backend = "pure_r")
+  collided <- suppressMessages(run_pipeline(colliding, backend = "pure_r"))
+
+  expect_equal(collided$trips, baseline$trips, ignore_attr = TRUE)
+  expect_equal(collided$stop_times, baseline$stop_times, ignore_attr = TRUE)
+})
+
 test_that("the supplied-identity path tolerates the same collision", {
   # Reported from a real feed: trip_col + direction_col with a source
   # column literally named `direction`.

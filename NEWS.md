@@ -1,3 +1,8 @@
+# gps2gtfs 0.3.1.9000
+
+* The pure R backend now ignores a passthrough `bus_stop` column while matching
+  terminal visits, consistent with the compiled backends.
+
 # gps2gtfs 0.3.0
 
 ## Breaking changes
