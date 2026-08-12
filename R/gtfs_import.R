@@ -106,7 +106,7 @@ gtfs_trip_endpoints <- function(gtfs, route_id) {
   endpoints
 }
 
-#' Derive Trip Terminals from a Static GTFS Feed
+#' Derive trip terminals from a static GTFS feed
 #'
 #' Determines the two terminals of a route from a planned (baseline) GTFS
 #' feed: the two most frequent trip endpoints (first/last stop per trip in
@@ -223,7 +223,7 @@ g2g_terminals_from_gtfs <- function(gtfs, route_id) {
   out[]
 }
 
-#' Derive a Stops Table from a Static GTFS Feed
+#' Derive a stops table from a static GTFS feed
 #'
 #' Builds the \code{stops_data} input for
 #' \code{\link{g2g_extract_trips_and_stop_times}} from a planned (baseline)

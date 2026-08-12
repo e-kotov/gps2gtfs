@@ -2,7 +2,7 @@
 % Please edit documentation in R/pipeline.R
 \name{g2g_extract_trips}
 \alias{g2g_extract_trips}
-\title{Extract Trips from GPS Trajectories}
+\title{Extract trips from GPS trajectories}
 \usage{
 g2g_extract_trips(
   gps_data,
@@ -134,7 +134,34 @@ A data.table containing extracted trip features. \code{start_time}
   section of \code{\link{g2g_extract_trips_and_stop_times}}.
 }
 \description{
-Reads raw GPS and terminal CSV files, extracts trips, and optionally writes results to a CSV.
+Cuts a stream of vehicle GPS pings into individual trips and returns one row
+of features per trip: its vehicle, direction, start and end times, duration,
+and day of week. Takes a data.frame or a path to a CSV, and optionally writes
+the result to \code{output_path}.
+}
+\details{
+Where the cuts fall is the whole problem, and there are three regimes. If the
+data already carries trip identities (\code{trip_col}, e.g. a GTFS-Realtime
+\code{trip_id}), segmentation follows them and nothing is inferred. Otherwise
+the trips are inferred from the trajectory: \code{segmentation = "terminals"}
+cuts on crossings of two known terminal buffers, and
+\code{segmentation = "layover"} cuts wherever the vehicle dwells longer than
+\code{layover_gap}, anywhere on the route, which is what handles short-turns,
+loops and multi-branch service. \code{session_gap} bounds all three: a vehicle
+unseen for that long starts a new driving session and no trip spans one, so
+overnight trips stay intact while overnight parking still separates one day's
+operations from the next.
+
+Inferred boundaries are estimates, and \code{layover_gap} in particular is
+mode- and feed-dependent: it must exceed the ping interval and the normal
+in-service dwell, and stay below the shortest real layover. The result carries
+a coverage table (\code{\link{g2g_diagnostics}}) reporting what the run
+dropped, which is the way to tell a clean extraction from a plausible-looking
+one.
+
+To get stop times as well, use
+\code{\link{g2g_extract_trips_and_stop_times}}, which runs this segmentation
+and then matches the pings of each trip to stop buffers.
 }
 \examples{
 \donttest{

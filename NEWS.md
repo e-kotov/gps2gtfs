@@ -1,3 +1,31 @@
+# gps2gtfs 0.3.2
+
+Documentation only. No user-visible behaviour changed, and no function, argument
+or return value was renamed or added.
+
+* **`g2g_extract_trips()` and `g2g_extract_trips_and_stop_times()` no longer
+  claim to read CSV files.** Both descriptions opened "Reads raw GPS and terminal
+  CSV files", which was never true: each of `gps_data`, `terminals_data` and
+  `stops_data` accepts a data.frame or a path, exactly as their own `@param`
+  entries already said. The two front doors also had one sentence each while
+  smaller helpers had a reasoned paragraph, so both are now written to that
+  depth - which segmentation regime applies when, what `session_gap` bounds, what
+  the stop-matching stage can silently drop, and why `g2g_diagnostics()` is the
+  thing to read before trusting the output.
+
+* **`g2g_data_stops` and `g2g_data_terminals` now state their provenance.** Both
+  are documented as working with `g2g_data_gps`, which says it comes from Kandy,
+  Sri Lanka; they did not, so the trio read as three unrelated sample tables.
+  Their titles are now parallel as well.
+
+* **Titles are sentence case throughout**, per the tidyverse convention the
+  package mostly already followed.
+
+* Regenerating the documentation with the current roxygen2 also rewrote
+  `NAMESPACE`'s `importFrom(data.table, ...)` into its multi-argument form and
+  replaced `RoxygenNote` with `Config/roxygen2/version`. Both are equivalent to
+  what they replaced.
+
 # gps2gtfs 0.3.1
 
 * The pure R backend now ignores a passthrough `bus_stop` column while matching

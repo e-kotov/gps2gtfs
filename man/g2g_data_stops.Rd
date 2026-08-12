@@ -3,7 +3,7 @@
 \docType{data}
 \name{g2g_data_stops}
 \alias{g2g_data_stops}
-\title{Bus Stops Data}
+\title{Sample bus stops}
 \format{
 A data frame with 23 rows and 6 variables:
 \describe{
@@ -22,8 +22,10 @@ Original data from the Python \code{gps2gtfs} package.
 g2g_data_stops
 }
 \description{
-Sample data containing the coordinates and metadata for bus stops.
-This dataset works together with \code{g2g_data_gps} to extract stop times.
+Coordinates and metadata for the bus stops of the same Kandy, Sri Lanka
+service as \code{\link{g2g_data_gps}}. It is the \code{stops_data} input, and
+works together with that dataset and \code{\link{g2g_data_terminals}} to
+extract stop times.
 }
 \references{
 Ratneswaran, S., & Thayasivam, U. (2023). Extracting potential Travel time information from raw GPS data and Evaluating the Performance of Public transit - a case study in Kandy, Sri Lanka. \emph{2023 3rd International Conference on Intelligent Communication and Computational Techniques (ICCT)}, 1-7. \doi{10.1109/ICCT56969.2023.10075789}

@@ -18,9 +18,35 @@ is_rust_available <- function() {
   }
 }
 
-#' Extract Trips from GPS Trajectories
+#' Extract trips from GPS trajectories
 #'
-#' Reads raw GPS and terminal CSV files, extracts trips, and optionally writes results to a CSV.
+#' Cuts a stream of vehicle GPS pings into individual trips and returns one row
+#' of features per trip: its vehicle, direction, start and end times, duration,
+#' and day of week. Takes a data.frame or a path to a CSV, and optionally writes
+#' the result to \code{output_path}.
+#'
+#' Where the cuts fall is the whole problem, and there are three regimes. If the
+#' data already carries trip identities (\code{trip_col}, e.g. a GTFS-Realtime
+#' \code{trip_id}), segmentation follows them and nothing is inferred. Otherwise
+#' the trips are inferred from the trajectory: \code{segmentation = "terminals"}
+#' cuts on crossings of two known terminal buffers, and
+#' \code{segmentation = "layover"} cuts wherever the vehicle dwells longer than
+#' \code{layover_gap}, anywhere on the route, which is what handles short-turns,
+#' loops and multi-branch service. \code{session_gap} bounds all three: a vehicle
+#' unseen for that long starts a new driving session and no trip spans one, so
+#' overnight trips stay intact while overnight parking still separates one day's
+#' operations from the next.
+#'
+#' Inferred boundaries are estimates, and \code{layover_gap} in particular is
+#' mode- and feed-dependent: it must exceed the ping interval and the normal
+#' in-service dwell, and stay below the shortest real layover. The result carries
+#' a coverage table (\code{\link{g2g_diagnostics}}) reporting what the run
+#' dropped, which is the way to tell a clean extraction from a plausible-looking
+#' one.
+#'
+#' To get stop times as well, use
+#' \code{\link{g2g_extract_trips_and_stop_times}}, which runs this segmentation
+#' and then matches the pings of each trip to stop buffers.
 #'
 #' @param gps_data A data.frame or path to the raw GPS CSV.
 #' @param terminals_data A data.frame or path to the terminal coordinates CSV.
@@ -332,9 +358,33 @@ g2g_extract_trips <- function(
   trip_features
 }
 
-#' Extract Trips and Stop Times from GPS Trajectories
+#' Extract trips and stop times from GPS trajectories
 #'
-#' Reads raw GPS, terminal, and stop CSV files, extracts trips and stop times, and optionally writes results.
+#' The package's main entry point. Cuts a stream of vehicle GPS pings into
+#' individual trips, then matches each trip's pings to stop buffers, returning
+#' both a trip-feature table and a stop-time table with arrival, departure and
+#' dwell per stop. Each of \code{gps_data}, \code{terminals_data} and
+#' \code{stops_data} may be a data.frame or a path to a CSV, and either table can
+#' optionally be written out.
+#'
+#' Segmentation works exactly as in \code{\link{g2g_extract_trips}} - supplied
+#' \code{trip_col} identities, terminal buffers, or layover dwells, all bounded
+#' by \code{session_gap} - and this function adds the stop-matching stage on top.
+#' A ping is attributed to a stop when it falls inside
+#' \code{stops_buffer_radius}, with \code{stops_extended_buffer_radius} as the
+#' wider fallback; the stops of a trip are restricted to those labeled with its
+#' direction, so \code{stops_data$direction} and the trips' direction labels must
+#' use the same values (see \code{stop_direction_map}).
+#'
+#' Both stages estimate. Trip boundaries can be misplaced without the trip count
+#' looking wrong, and a stop the vehicle passed outside every buffer simply
+#' produces no row. The returned tables therefore carry a coverage table
+#' (\code{\link{g2g_diagnostics}}) reporting pings with no usable trip identity,
+#' unmatched segments and out-of-range stops, and that is what to read before
+#' treating the output as complete.
+#'
+#' The result is inference tables, not GTFS files; see the section below for what
+#' still has to happen before this is a publishable feed.
 #'
 #' @param gps_data A data.frame or path to the raw GPS CSV.
 #' @param terminals_data A data.frame or path to the terminal coordinates CSV.

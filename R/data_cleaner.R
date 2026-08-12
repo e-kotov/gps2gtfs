@@ -83,7 +83,7 @@ normalize_coordinates <- function(df, projected = NULL, name = "dataset") {
   list(dt = dt, projected = projected)
 }
 
-#' Clean Raw GPS Data
+#' Clean raw GPS data
 #'
 #' Cleans raw GPS or GTFS-Realtime vehicle position data: maps input columns to
 #' the canonical schema, removes records with zero coordinates or missing

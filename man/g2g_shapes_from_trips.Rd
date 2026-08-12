@@ -2,7 +2,7 @@
 % Please edit documentation in R/baseline_free.R
 \name{g2g_shapes_from_trips}
 \alias{g2g_shapes_from_trips}
-\title{Build shapes.txt-Shaped Traces from a Pipeline Trajectory}
+\title{Build shapes.txt-shaped traces from a pipeline trajectory}
 \usage{
 g2g_shapes_from_trips(trajectory, shape_id_prefix = "SHP_")
 }

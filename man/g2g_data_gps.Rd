@@ -3,7 +3,7 @@
 \docType{data}
 \name{g2g_data_gps}
 \alias{g2g_data_gps}
-\title{GPS Trajectory Subset}
+\title{Sample bus GPS trajectories}
 \format{
 A data frame with 2167 rows and 6 variables:
 \describe{
@@ -23,8 +23,10 @@ Original data from the Python \code{gps2gtfs} package.
 g2g_data_gps
 }
 \description{
-A lightweight subset of raw bus GPS data from Kandy, Sri Lanka.
-This dataset is intended for examples and testing of the \code{gps2gtfs} pipeline.
+A lightweight subset of raw bus GPS pings from Kandy, Sri Lanka, intended for
+examples and testing of the \code{gps2gtfs} pipeline. It is the \code{gps_data}
+input, and works together with \code{\link{g2g_data_stops}} and
+\code{\link{g2g_data_terminals}}, which describe the same service.
 }
 \references{
 Ratneswaran, S., & Thayasivam, U. (2023). Extracting potential Travel time information from raw GPS data and Evaluating the Performance of Public transit - a case study in Kandy, Sri Lanka. \emph{2023 3rd International Conference on Intelligent Communication and Computational Techniques (ICCT)}, 1-7. \doi{10.1109/ICCT56969.2023.10075789}

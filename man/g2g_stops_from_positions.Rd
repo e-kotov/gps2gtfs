@@ -2,7 +2,7 @@
 % Please edit documentation in R/baseline_free.R
 \name{g2g_stops_from_positions}
 \alias{g2g_stops_from_positions}
-\title{Estimate Stop Coordinates from Vehicle Positions}
+\title{Estimate stop coordinates from vehicle positions}
 \usage{
 g2g_stops_from_positions(positions, statuses = "STOPPED_AT", min_obs = 3L)
 }
