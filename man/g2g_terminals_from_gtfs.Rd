@@ -2,7 +2,7 @@
 % Please edit documentation in R/gtfs_import.R
 \name{g2g_terminals_from_gtfs}
 \alias{g2g_terminals_from_gtfs}
-\title{Derive Trip Terminals from a Static GTFS Feed}
+\title{Derive trip terminals from a static GTFS feed}
 \usage{
 g2g_terminals_from_gtfs(gtfs, route_id)
 }
@@ -24,7 +24,8 @@ feed: the two most frequent trip endpoints (first/last stop per trip in
 \code{stop_times.txt}). The result feeds directly into
 \code{terminals_data} of \code{\link{g2g_extract_trips}} and
 \code{\link{g2g_extract_trips_and_stop_times}}.
-
+}
+\details{
 Frequency ranking cannot tell two ends of a line from two platforms of one
 place, so the function warns when fewer than 90\% of trip endpoints match
 the two it derived (variants or branches) and when the two are close enough

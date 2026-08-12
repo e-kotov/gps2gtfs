@@ -1,7 +1,7 @@
 Type: Package
 Package: gps2gtfs
 Title: High-Performance GPS to GTFS Converter
-Version: 0.3.1
+Version: 0.3.2
 Authors@R: c(
     person("Egor", "Kotov", , "kotov.egor@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0001-6690-5345")),
@@ -36,5 +36,5 @@ LinkingTo:
 Config/rextendr/version: 0.5.0
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.3.3
 SystemRequirements: Cargo (Rust's package manager), rustc >= 1.65.0, xz
+Config/roxygen2/version: 8.1.0

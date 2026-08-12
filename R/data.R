@@ -1,7 +1,9 @@
-#' GPS Trajectory Subset
+#' Sample bus GPS trajectories
 #'
-#' A lightweight subset of raw bus GPS data from Kandy, Sri Lanka.
-#' This dataset is intended for examples and testing of the \code{gps2gtfs} pipeline.
+#' A lightweight subset of raw bus GPS pings from Kandy, Sri Lanka, intended for
+#' examples and testing of the \code{gps2gtfs} pipeline. It is the \code{gps_data}
+#' input, and works together with \code{\link{g2g_data_stops}} and
+#' \code{\link{g2g_data_terminals}}, which describe the same service.
 #'
 #' @format A data frame with 2167 rows and 6 variables:
 #' \describe{
@@ -19,10 +21,12 @@
 #' Ratneswaran, S., & Thayasivam, U. (2023). Extracting potential Travel time information from raw GPS data and Evaluating the Performance of Public transit - a case study in Kandy, Sri Lanka. \emph{2023 3rd International Conference on Intelligent Communication and Computational Techniques (ICCT)}, 1-7. \doi{10.1109/ICCT56969.2023.10075789}
 "g2g_data_gps"
 
-#' Bus Stops Data
+#' Sample bus stops
 #'
-#' Sample data containing the coordinates and metadata for bus stops.
-#' This dataset works together with \code{g2g_data_gps} to extract stop times.
+#' Coordinates and metadata for the bus stops of the same Kandy, Sri Lanka
+#' service as \code{\link{g2g_data_gps}}. It is the \code{stops_data} input, and
+#' works together with that dataset and \code{\link{g2g_data_terminals}} to
+#' extract stop times.
 #'
 #' @format A data frame with 23 rows and 6 variables:
 #' \describe{
@@ -39,10 +43,13 @@
 #' Ratneswaran, S., & Thayasivam, U. (2023). Extracting potential Travel time information from raw GPS data and Evaluating the Performance of Public transit - a case study in Kandy, Sri Lanka. \emph{2023 3rd International Conference on Intelligent Communication and Computational Techniques (ICCT)}, 1-7. \doi{10.1109/ICCT56969.2023.10075789}
 "g2g_data_stops"
 
-#' Bus Terminals Data
+#' Sample bus terminals
 #'
-#' Sample data containing the coordinates for bus route terminals.
-#' Used to define the start and end of trips.
+#' Coordinates for the two route terminals of the same Kandy, Sri Lanka service
+#' as \code{\link{g2g_data_gps}}. It is the \code{terminals_data} input, and
+#' works together with that dataset and \code{\link{g2g_data_stops}}: the
+#' terminal buffers are what bound the start and end of each trip under
+#' \code{segmentation = "terminals"}.
 #'
 #' @format A data frame with 2 rows and 4 variables:
 #' \describe{

@@ -2,7 +2,7 @@
 % Please edit documentation in R/gtfs_import.R
 \name{g2g_stops_from_gtfs}
 \alias{g2g_stops_from_gtfs}
-\title{Derive a Stops Table from a Static GTFS Feed}
+\title{Derive a stops table from a static GTFS feed}
 \usage{
 g2g_stops_from_gtfs(gtfs, route_id)
 }
@@ -30,7 +30,8 @@ a trip starts from, so they map onto the terminals derived by
 \code{stop_direction_map}. Note this means the labels are terminal
 \code{stop_id}s, not GTFS \code{direction_id} values; they are not
 interchangeable with a \code{direction_col} taken from the positions.
-
+}
+\details{
 Trips that start at neither derived terminal have no direction group and are
 dropped with a warning, so stops served only by short turns or branch
 variants do not appear in the result.

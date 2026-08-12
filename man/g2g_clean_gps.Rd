@@ -2,7 +2,7 @@
 % Please edit documentation in R/data_cleaner.R
 \name{g2g_clean_gps}
 \alias{g2g_clean_gps}
-\title{Clean Raw GPS Data}
+\title{Clean raw GPS data}
 \usage{
 g2g_clean_gps(
   raw_gps_df,

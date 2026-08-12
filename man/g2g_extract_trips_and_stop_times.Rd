@@ -2,7 +2,7 @@
 % Please edit documentation in R/pipeline.R
 \name{g2g_extract_trips_and_stop_times}
 \alias{g2g_extract_trips_and_stop_times}
-\title{Extract Trips and Stop Times from GPS Trajectories}
+\title{Extract trips and stop times from GPS trajectories}
 \usage{
 g2g_extract_trips_and_stop_times(
   gps_data,
@@ -178,7 +178,32 @@ A list containing two data.tables: \code{trips} and
   (see \code{\link{g2g_diagnostics}}).
 }
 \description{
-Reads raw GPS, terminal, and stop CSV files, extracts trips and stop times, and optionally writes results.
+The package's main entry point. Cuts a stream of vehicle GPS pings into
+individual trips, then matches each trip's pings to stop buffers, returning
+both a trip-feature table and a stop-time table with arrival, departure and
+dwell per stop. Each of \code{gps_data}, \code{terminals_data} and
+\code{stops_data} may be a data.frame or a path to a CSV, and either table can
+optionally be written out.
+}
+\details{
+Segmentation works exactly as in \code{\link{g2g_extract_trips}} - supplied
+\code{trip_col} identities, terminal buffers, or layover dwells, all bounded
+by \code{session_gap} - and this function adds the stop-matching stage on top.
+A ping is attributed to a stop when it falls inside
+\code{stops_buffer_radius}, with \code{stops_extended_buffer_radius} as the
+wider fallback; the stops of a trip are restricted to those labeled with its
+direction, so \code{stops_data$direction} and the trips' direction labels must
+use the same values (see \code{stop_direction_map}).
+
+Both stages estimate. Trip boundaries can be misplaced without the trip count
+looking wrong, and a stop the vehicle passed outside every buffer simply
+produces no row. The returned tables therefore carry a coverage table
+(\code{\link{g2g_diagnostics}}) reporting pings with no usable trip identity,
+unmatched segments and out-of-range stops, and that is what to read before
+treating the output as complete.
+
+The result is inference tables, not GTFS files; see the section below for what
+still has to happen before this is a publishable feed.
 }
 \section{Inference tables, not GTFS files}{
 

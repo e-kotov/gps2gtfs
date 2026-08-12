@@ -1,4 +1,4 @@
-#' Estimate Stop Coordinates from Vehicle Positions
+#' Estimate stop coordinates from vehicle positions
 #'
 #' Baseline-free helper: when no static GTFS feed exists, stop locations can
 #' be estimated from GTFS-Realtime Vehicle Positions that carry a
@@ -91,7 +91,7 @@ g2g_stops_from_positions <- function(
   out[]
 }
 
-#' Build shapes.txt-Shaped Traces from a Pipeline Trajectory
+#' Build shapes.txt-shaped traces from a pipeline trajectory
 #'
 #' Converts the ping-level trajectory of extracted trips into a table shaped
 #' like the GTFS \code{shapes.txt} file: one shape per trip, points in travel

@@ -3,7 +3,7 @@
 \docType{data}
 \name{g2g_data_terminals}
 \alias{g2g_data_terminals}
-\title{Bus Terminals Data}
+\title{Sample bus terminals}
 \format{
 A data frame with 2 rows and 4 variables:
 \describe{
@@ -20,8 +20,11 @@ Original data from the Python \code{gps2gtfs} package.
 g2g_data_terminals
 }
 \description{
-Sample data containing the coordinates for bus route terminals.
-Used to define the start and end of trips.
+Coordinates for the two route terminals of the same Kandy, Sri Lanka service
+as \code{\link{g2g_data_gps}}. It is the \code{terminals_data} input, and
+works together with that dataset and \code{\link{g2g_data_stops}}: the
+terminal buffers are what bound the start and end of each trip under
+\code{segmentation = "terminals"}.
 }
 \references{
 Ratneswaran, S., & Thayasivam, U. (2023). Extracting potential Travel time information from raw GPS data and Evaluating the Performance of Public transit - a case study in Kandy, Sri Lanka. \emph{2023 3rd International Conference on Intelligent Communication and Computational Techniques (ICCT)}, 1-7. \doi{10.1109/ICCT56969.2023.10075789}
