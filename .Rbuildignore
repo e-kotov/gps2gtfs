@@ -19,3 +19,4 @@
 ^src/Makevars$
 ^src/Makevars\.win$
 ^vignettes/.*\.html$
+^tests/testthat/_problems$
