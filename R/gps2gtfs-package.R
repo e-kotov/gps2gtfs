@@ -69,6 +69,11 @@ if (getRversion() >= "2.15.1") {
     "i.pattern_ref",
     # Evaluation harness / gates NSE column names (R/eval_harness.R,
     # R/eval_gates.R).
+    # "..keys" is data.table's `..` prefix at eval_harness.R:190 - pred[, ..keys]
+    # reads `keys` from the enclosing scope - not a column name.
+    "..keys",
+    "iou",
+    "seg_id",
     "route_id",
     "pred",
     "truth",
