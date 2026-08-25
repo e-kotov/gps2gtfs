@@ -67,8 +67,5 @@ src/Makevars.win
 # IDE and Agent
 .vscode/
 .antigravitycli/
-
-# testthat problem dumps and check residue (CR3-4)
 *.Rcheck/
 *.tar.gz
-tests/testthat/_problems/
