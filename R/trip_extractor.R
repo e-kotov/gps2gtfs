@@ -69,6 +69,72 @@ nearest_terminal_id <- function(lat, lon, terminals, projected) {
   ids[max.col(-dmat, ties.method = "first")]
 }
 
+#' Debounce a Direction Series by Run Length and Run Span
+#'
+#' Suppresses contrary direction bursts too short to be a real direction
+#' change. A run of consecutive identical direction values qualifies only when
+#' it is \emph{both} long enough in pings and long enough in seconds; the
+#' conjunction is what makes the rule immune to a burst that is dense but
+#' instantaneous (many pings, no elapsed time) and to one that is sparse but
+#' long (two pings either side of a GPS dropout). A disjunction would absorb
+#' neither.
+#'
+#' Non-qualifying runs are absorbed into the last qualifying run before them;
+#' runs before the first qualifying one take that first run's value. When no
+#' run qualifies at all the whole series collapses to the vehicle's modal
+#' direction, so the vehicle yields one trip rather than an error.
+#'
+#' @param dir Direction values for one vehicle, in time order.
+#' @param ts Timestamps for the same pings, in the same order.
+#' @param min_pings Integer. Minimum consecutive pings for a run to qualify.
+#' @param min_seconds Numeric. Minimum intra-run span, \code{ts[end] -
+#'   ts[start]}, for a run to qualify. A 1-ping run spans 0 seconds.
+#' @return A character vector of smoothed direction values, same length as
+#'   \code{dir}.
+#' @noRd
+debounce_direction_runlen <- function(dir, ts, min_pings = 2L, min_seconds = 600) {
+  len <- length(dir)
+  dir_chr <- as.character(dir)
+  # A single ping cannot flip, and thresholds this low disqualify nothing.
+  if (len <= 1L || (min_pings <= 1L && min_seconds <= 0)) {
+    return(dir_chr)
+  }
+
+  r <- rle(dir_chr)
+  n_runs <- length(r$lengths)
+  if (n_runs <= 1L) {
+    return(dir_chr)
+  }
+
+  end_idx <- cumsum(r$lengths)
+  start_idx <- c(1L, end_idx[-n_runs] + 1L)
+
+  ts_num <- as.numeric(ts)
+  spans <- ts_num[end_idx] - ts_num[start_idx]
+  counts <- r$lengths
+
+  qual <- (counts >= min_pings) & (spans >= min_seconds)
+
+  if (!any(qual)) {
+    tab <- sort(table(dir_chr), decreasing = TRUE)
+    modal <- if (length(tab) > 0L) names(tab)[1L] else dir_chr[1L]
+    return(rep(modal, len))
+  }
+
+  # Seeding from the first qualifying run back-fills the prefix; thereafter
+  # each non-qualifying run inherits the qualifying run that precedes it.
+  new_values <- r$values
+  cur_val <- r$values[which(qual)[1L]]
+  for (i in seq_len(n_runs)) {
+    if (qual[i]) {
+      cur_val <- r$values[i]
+    }
+    new_values[i] <- cur_val
+  }
+
+  inverse.rle(list(lengths = r$lengths, values = new_values))
+}
+
 #' Extract Trips from Supplied Trip Identities (Fast Path)
 #'
 #' When the GPS data already carries trip identities (e.g. GTFS-Realtime
@@ -82,6 +148,11 @@ nearest_terminal_id <- function(lat, lon, terminals, projected) {
 #' @param cleaned_gps_dt A data.table of cleaned GPS data.
 #' @param trip_terminals_df Terminal coordinates with \code{terminal_id}.
 #' @param trip_col Name of the column holding the supplied trip identities.
+#' @param cut_on_direction_change Logical. When TRUE, a debounced change in
+#'   \code{direction_col} cuts a trip instead of raising the mid-trip conflict
+#'   error. Default FALSE, which leaves behaviour unchanged.
+#' @param direction_debounce_min_pings,direction_debounce_min_seconds Debounce
+#'   thresholds, inert unless \code{cut_on_direction_change} is TRUE.
 #' @return A data.table shaped like the output of \code{extract_trips_r}:
 #'   two rows (entry/exit) per trip with \code{bus_stop} and integer
 #'   \code{trip_id}.
@@ -92,8 +163,25 @@ extract_trips_from_ids_r <- function(
   trip_col,
   projected = NULL,
   session_gap = 4 * 3600,
-  direction_col = NULL
+  direction_col = NULL,
+  cut_on_direction_change = FALSE,
+  direction_debounce_min_pings = 2L,
+  direction_debounce_min_seconds = 600
 ) {
+  cut_on_direction_change <- isTRUE(cut_on_direction_change)
+  if (cut_on_direction_change && is.null(direction_col)) {
+    stop(
+      "'cut_on_direction_change = TRUE' requires 'direction_col': there is ",
+      "no direction series to debounce without it.",
+      call. = FALSE
+    )
+  }
+  if (cut_on_direction_change) {
+    validate_debounce_thresholds(
+      direction_debounce_min_pings,
+      direction_debounce_min_seconds
+    )
+  }
   missing_cols <- setdiff(c(trip_col, direction_col), names(cleaned_gps_dt))
   if (length(missing_cols) > 0L) {
     stop(
@@ -159,14 +247,40 @@ extract_trips_from_ids_r <- function(
   }
 
   dt <- data.table::copy(cleaned_gps_dt)
-  # trip_col may name one column, or several that jointly identify a trip
+
+  # Opt-in: let a direction change cut a trip. The debounce runs on the whole
+  # ping series per vehicle, before any segmentation, so a burst is judged
+  # against its true neighbours rather than against a segment boundary that
+  # the burst itself would have created. The smoothed value then joins the
+  # trip identity, which is what actually performs the cut - and, being
+  # constant inside every resulting segment by construction, is also what
+  # makes the mid-trip conflict error below unreachable in this mode.
+  identity_cols <- trip_col
+  direction_value_col <- direction_col
+  if (cut_on_direction_change) {
+    data.table::setorderv(dt, c("vehicle_id", "timestamp"))
+    dt[,
+      rt_direction_smoothed := debounce_direction_runlen(
+        .SD[[direction_col]],
+        timestamp,
+        min_pings = direction_debounce_min_pings,
+        min_seconds = direction_debounce_min_seconds
+      ),
+      by = vehicle_id,
+      .SDcols = direction_col
+    ]
+    identity_cols <- c(trip_col, "rt_direction_smoothed")
+    direction_value_col <- "rt_direction_smoothed"
+  }
+
+  # identity_cols may name one column, or several that jointly identify a trip
   # (e.g. the GTFS-RT TripDescriptor route_id/direction_id/start_date/start_time
   # when vehicle positions carry no trip_id). Compose them into one identity;
   # a row is unusable only if every component is missing.
-  if (length(trip_col) == 1L) {
-    dt[, rt_trip_value := as.character(dt[[trip_col]])]
+  if (length(identity_cols) == 1L) {
+    dt[, rt_trip_value := as.character(dt[[identity_cols]])]
   } else {
-    comp <- lapply(trip_col, function(col) {
+    comp <- lapply(identity_cols, function(col) {
       v <- as.character(dt[[col]])
       v[is.na(v)] <- ""
       v
@@ -230,7 +344,7 @@ extract_trips_from_ids_r <- function(
   if (!is.null(direction_col)) {
     dir_summary <- seg_dt[,
       {
-        v <- as.character(.SD[[direction_col]])
+        v <- as.character(.SD[[direction_value_col]])
         v <- unique(v[!is.na(v) & nzchar(trimws(v))])
         .(
           rt_direction = if (length(v) > 0L) v[1L] else NA_character_,
@@ -243,7 +357,7 @@ extract_trips_from_ids_r <- function(
         )
       },
       by = trip_id,
-      .SDcols = direction_col
+      .SDcols = direction_value_col
     ]
 
     conflicted <- dir_summary[n_directions > 1L]
@@ -296,6 +410,11 @@ extract_trips_from_ids_r <- function(
   # can preserve it. extract_trip_features_r() surfaces it as
   # provided_trip_id.
   bounds[, seg_n := NULL]
+  # Internal scratch column: the smoothed series did its work in the identity
+  # above and in rt_direction, and must not leak into the caller's table.
+  if ("rt_direction_smoothed" %in% names(bounds)) {
+    bounds[, rt_direction_smoothed := NULL]
+  }
   stamp_seg_drops(bounds)[]
 }
 

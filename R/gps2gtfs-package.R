@@ -34,6 +34,7 @@ if (getRversion() >= "2.15.1") {
     "rt_trip_value",
     "rt_direction",
     "i.rt_direction",
+    "rt_direction_smoothed",
     "n_directions",
     "span_mins",
     "internal_direction",
