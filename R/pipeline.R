@@ -93,13 +93,33 @@ is_rust_available <- function() {
 #'   two-terminal lines (short-turns, variants, one-way services) are handled.
 #'   For stop-time extraction, stops are grouped for matching by their
 #'   \code{direction} label, which must use the same values as
-#'   \code{direction_col}. This column labels a trip's direction; it does not
-#'   cut trips. A trip has exactly one direction, so if \code{direction_col}
-#'   takes more than one value inside a segment that \code{trip_col} declared
-#'   to be one trip, the two inputs contradict each other and extraction stops
-#'   with an error: either add the direction column to \code{trip_col} to
-#'   segment by it, or collapse it to one value per supplied trip identity.
-#'   Default \code{NULL}.
+#'   \code{direction_col}. By default this column labels a trip's direction; it
+#'   does not cut trips. A trip has exactly one direction, so if
+#'   \code{direction_col} takes more than one value inside a segment that
+#'   \code{trip_col} declared to be one trip, the two inputs contradict each
+#'   other and extraction stops with an error: either add the direction column
+#'   to \code{trip_col} to segment by it, set
+#'   \code{cut_on_direction_change = TRUE}, or collapse it to one value per
+#'   supplied trip identity. Default \code{NULL}.
+#' @param cut_on_direction_change Logical. When \code{TRUE}, a change in
+#'   \code{direction_col} cuts a trip rather than raising the mid-trip
+#'   direction conflict error above. Raw direction fields flip spuriously, so
+#'   the change is debounced first: only a run of consecutive identical values
+#'   that is both long enough in pings and long enough in seconds counts as a
+#'   real direction change, and shorter contrary bursts are absorbed into the
+#'   direction around them. Requires \code{direction_col}. Default
+#'   \code{FALSE}, which leaves behaviour unchanged.
+#' @param direction_debounce_min_pings Integer. Minimum consecutive pings for a
+#'   direction run to be treated as a real direction change. Inert unless
+#'   \code{cut_on_direction_change = TRUE}. Note this floor only binds on
+#'   high-cadence feeds or at small \code{direction_debounce_min_seconds}: at a
+#'   15 s ping cadence a run needs about \code{min_seconds / 15 + 1} pings to
+#'   span the seconds threshold at all, so from roughly 300 s upwards the
+#'   seconds threshold binds first. Default \code{2L}.
+#' @param direction_debounce_min_seconds Numeric. Minimum intra-run span, in
+#'   seconds, for a direction run to be treated as a real direction change. A
+#'   single-ping run spans 0 seconds and is therefore always absorbed. Inert
+#'   unless \code{cut_on_direction_change = TRUE}. Default 600.
 #' @param session_gap Numeric. Successive observations of a vehicle further
 #'   apart than this many seconds start a new driving session; trips never
 #'   span sessions. This replaces the former calendar-date boundary, so
@@ -163,6 +183,9 @@ g2g_extract_trips <- function(
   tz = NULL,
   trip_col = NULL,
   direction_col = NULL,
+  cut_on_direction_change = FALSE,
+  direction_debounce_min_pings = 2L,
+  direction_debounce_min_seconds = 600,
   session_gap = 4 * 3600,
   segmentation = c("auto", "terminals", "layover"),
   layover_gap = 10 * 60,
@@ -180,6 +203,13 @@ g2g_extract_trips <- function(
   if (!is.null(direction_col) && is.null(trip_col)) {
     stop(
       "'direction_col' is only used with 'trip_col'.",
+      call. = FALSE
+    )
+  }
+  if (isTRUE(cut_on_direction_change) && is.null(direction_col)) {
+    stop(
+      "'cut_on_direction_change = TRUE' requires 'direction_col': there is ",
+      "no direction series to debounce without it.",
       call. = FALSE
     )
   }
@@ -296,7 +326,10 @@ g2g_extract_trips <- function(
       trip_col,
       projected = projected,
       session_gap = session_gap,
-      direction_col = direction_col
+      direction_col = direction_col,
+      cut_on_direction_change = cut_on_direction_change,
+      direction_debounce_min_pings = direction_debounce_min_pings,
+      direction_debounce_min_seconds = direction_debounce_min_seconds
     )
   } else if (seg_mode == "layover") {
     trips <- extract_trips_layover_r(
@@ -449,13 +482,33 @@ g2g_extract_trips <- function(
 #'   two-terminal lines (short-turns, variants, one-way services) are handled.
 #'   For stop-time extraction, stops are grouped for matching by their
 #'   \code{direction} label, which must use the same values as
-#'   \code{direction_col}. This column labels a trip's direction; it does not
-#'   cut trips. A trip has exactly one direction, so if \code{direction_col}
-#'   takes more than one value inside a segment that \code{trip_col} declared
-#'   to be one trip, the two inputs contradict each other and extraction stops
-#'   with an error: either add the direction column to \code{trip_col} to
-#'   segment by it, or collapse it to one value per supplied trip identity.
-#'   Default \code{NULL}.
+#'   \code{direction_col}. By default this column labels a trip's direction; it
+#'   does not cut trips. A trip has exactly one direction, so if
+#'   \code{direction_col} takes more than one value inside a segment that
+#'   \code{trip_col} declared to be one trip, the two inputs contradict each
+#'   other and extraction stops with an error: either add the direction column
+#'   to \code{trip_col} to segment by it, set
+#'   \code{cut_on_direction_change = TRUE}, or collapse it to one value per
+#'   supplied trip identity. Default \code{NULL}.
+#' @param cut_on_direction_change Logical. When \code{TRUE}, a change in
+#'   \code{direction_col} cuts a trip rather than raising the mid-trip
+#'   direction conflict error above. Raw direction fields flip spuriously, so
+#'   the change is debounced first: only a run of consecutive identical values
+#'   that is both long enough in pings and long enough in seconds counts as a
+#'   real direction change, and shorter contrary bursts are absorbed into the
+#'   direction around them. Requires \code{direction_col}. Default
+#'   \code{FALSE}, which leaves behaviour unchanged.
+#' @param direction_debounce_min_pings Integer. Minimum consecutive pings for a
+#'   direction run to be treated as a real direction change. Inert unless
+#'   \code{cut_on_direction_change = TRUE}. Note this floor only binds on
+#'   high-cadence feeds or at small \code{direction_debounce_min_seconds}: at a
+#'   15 s ping cadence a run needs about \code{min_seconds / 15 + 1} pings to
+#'   span the seconds threshold at all, so from roughly 300 s upwards the
+#'   seconds threshold binds first. Default \code{2L}.
+#' @param direction_debounce_min_seconds Numeric. Minimum intra-run span, in
+#'   seconds, for a direction run to be treated as a real direction change. A
+#'   single-ping run spans 0 seconds and is therefore always absorbed. Inert
+#'   unless \code{cut_on_direction_change = TRUE}. Default 600.
 #' @param session_gap Numeric. Successive observations of a vehicle further
 #'   apart than this many seconds start a new driving session; trips never
 #'   span sessions. This replaces the former calendar-date boundary, so
@@ -615,6 +668,9 @@ g2g_extract_trips_and_stop_times <- function(
   tz = NULL,
   trip_col = NULL,
   direction_col = NULL,
+  cut_on_direction_change = FALSE,
+  direction_debounce_min_pings = 2L,
+  direction_debounce_min_seconds = 600,
   session_gap = 4 * 3600,
   segmentation = c("auto", "terminals", "layover"),
   layover_gap = 10 * 60,
@@ -639,6 +695,13 @@ g2g_extract_trips_and_stop_times <- function(
     stop(
       "'direction_col' is only used with 'trip_col' (data-driven direction ",
       "applies to the supplied-trip-identity fast path).",
+      call. = FALSE
+    )
+  }
+  if (isTRUE(cut_on_direction_change) && is.null(direction_col)) {
+    stop(
+      "'cut_on_direction_change = TRUE' requires 'direction_col': there is ",
+      "no direction series to debounce without it.",
       call. = FALSE
     )
   }
@@ -817,7 +880,10 @@ g2g_extract_trips_and_stop_times <- function(
       trip_col,
       projected = projected,
       session_gap = session_gap,
-      direction_col = direction_col
+      direction_col = direction_col,
+      cut_on_direction_change = cut_on_direction_change,
+      direction_debounce_min_pings = direction_debounce_min_pings,
+      direction_debounce_min_seconds = direction_debounce_min_seconds
     )
   } else if (seg_mode == "layover") {
     trips <- extract_trips_layover_r(

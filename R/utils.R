@@ -45,6 +45,28 @@ validate_layover_gap <- function(x) {
   }
 }
 
+validate_debounce_thresholds <- function(min_pings, min_seconds) {
+  if (
+    length(min_pings) != 1L || !is.numeric(min_pings) || is.na(min_pings) ||
+      !is.finite(min_pings) || min_pings < 1 || min_pings != trunc(min_pings)
+  ) {
+    stop(
+      "'direction_debounce_min_pings' must be one whole number of pings >= 1.",
+      call. = FALSE
+    )
+  }
+  if (
+    length(min_seconds) != 1L || !is.numeric(min_seconds) ||
+      is.na(min_seconds) || !is.finite(min_seconds) || min_seconds < 0
+  ) {
+    stop(
+      "'direction_debounce_min_seconds' must be one non-negative finite ",
+      "number of seconds.",
+      call. = FALSE
+    )
+  }
+}
+
 validate_layover_radius <- function(x) {
   if (
     length(x) != 1L || !is.numeric(x) || is.na(x) || !is.finite(x) || x <= 0
