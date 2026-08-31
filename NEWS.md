@@ -1,3 +1,43 @@
+# gps2gtfs 0.4.0
+
+New feature, opt-in and default-off. **Callers who do not set the new arguments get
+byte-identical behaviour to 0.3.2.**
+
+* **`g2g_extract_trips()` and `g2g_extract_trips_and_stop_times()` can now cut a trip
+  when the supplied direction changes.** Three new arguments, all with
+  backward-compatible defaults:
+
+    * `cut_on_direction_change` (default `FALSE`) — when `TRUE`, a change in the
+      `direction_col` value ends the current trip and starts a new one. When `FALSE`,
+      nothing changes: direction is still only labelled, exactly as in 0.3.2.
+    * `direction_debounce_min_pings` (default `2L`) — minimum consecutive pings a
+      direction run needs before it is allowed to cut.
+    * `direction_debounce_min_seconds` (default `600`) — minimum span, in seconds, a
+      direction run needs before it is allowed to cut.
+
+  Both thresholds must be met for a run to qualify (`counts >= N` **and**
+  `spans >= M`), so a single contrary ping, or a brief flicker at a stop, no longer
+  splits a trip. `cut_on_direction_change = TRUE` without `direction_col` is an error
+  rather than a silent no-op. The two thresholds are validated: `min_pings` must be one
+  whole number `>= 1`, `min_seconds` one non-negative finite number.
+
+* **Why it exists.** The `netmob26-transport-justice` evaluation reported that the
+  directional fast path labelled segments without splitting them, producing 12-14 hour
+  trips. 0.3.x fixed the package's *response* (it now errors on conflicting direction
+  inside one supplied trip identity); this release adds the cutting behaviour itself,
+  which was deferred at the time because a naive cut is not good enough — cutting on
+  every raw direction change inflates trip counts by about 17% and pushes fragmentation
+  from 0.40 to 0.57. The debounce is what makes the cut usable.
+
+* **What the evaluation showed, on one dataset.** Against a pre-registered, frozen
+  acceptance gate on held-out Niterói vehicles (`nitD11`, `nitD12`), the default
+  `N = 2` / `M = 600 s` setting improved fragmentation, downstream frequency MAPE and
+  median trip-duration error relative to a naive route+direction cut, and met every
+  registered bar. It is **worse** than that naive baseline on recovery and merge rate,
+  which the gate did not require it to beat. This is one deterministic vehicle split of
+  two service days on one operator: it is evidence that the feature works, not a claim
+  about other feeds. Evaluate on your own data before relying on it.
+
 # gps2gtfs 0.3.2
 
 Documentation only. No user-visible behaviour changed, and no function, argument
