@@ -57,6 +57,8 @@ if (getRversion() >= "2.15.1") {
     "stop_lon",
     "first_stop",
     "last_stop",
+    # Geometry-input builders (R/geometry_import.R).
+    "vertex_seq",
     # Additive C5 contract columns (assigned via := / propagated by join).
     "orientation_id",
     "orientation_status",

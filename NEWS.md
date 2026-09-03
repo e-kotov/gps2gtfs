@@ -1,3 +1,45 @@
+# gps2gtfs 0.5.0
+
+Two new exported functions. **Nothing else changed: every existing function behaves
+exactly as in 0.4.0.**
+
+* **`g2g_terminals_from_geometries()` and `g2g_stops_from_geometries()`** build the
+  `terminals_data` and `stops_data` inputs of
+  `g2g_extract_trips_and_stop_times()` from the route's own linestrings and a plain
+  table of stop coordinates. They are the GTFS-free analogues of
+  `g2g_terminals_from_gtfs()` and `g2g_stops_from_gtfs()`, and return the same
+  shapes, for operators who publish route geometry and a stop list but no static
+  feed.
+
+* **Input shape.** `geometries` is a data.frame of vertices in long form with columns
+  `route_id`, `direction`, `vertex_seq` (the numeric order of the vertices within a
+  direction), `latitude` and `longitude` — which is what three lines of any
+  JSON/GeoJSON reader produce, and needs no spatial dependency. An `sf` object of
+  `LINESTRING` or `MULTILINESTRING` geometries with `route_id` and `direction`
+  columns is also accepted when the (already suggested) 'sf' package is installed;
+  `MULTILINESTRING` parts are concatenated in part order.
+
+* **Each direction's terminal is the first vertex of its line**, and the
+  `terminal_id` *is* the direction label. Because `g2g_stops_from_geometries()`
+  labels stops with those same values, the stop labels already are terminal IDs and
+  **no `stop_direction_map` is needed**. Exactly two directions are required; a loop
+  or a third branch errors and points at `segmentation = "layover"`. Two lines whose
+  first vertices are closer than 150 m warn, because that usually means one direction
+  was drawn twice.
+
+* **A stop belongs to a direction when it is within `buffer_m` (default 50 m) of that
+  direction's polyline — measured to the line segments, not to the vertices.** A stop
+  sitting halfway along a 300 m segment is on the route; a nearest-vertex rule would
+  measure 150 m and drop it. Distances are computed on a local equirectangular
+  projection in metres, vectorised over stops by segments. A stop within `buffer_m`
+  of both lines (the two sides of one street) is returned once per direction, which
+  is what makes the direction labels do any work. Stops matched by no direction are
+  absent and their count is reported in a message; if that is every stop, the result
+  is a zero-row table with the same four columns and a warning, not an error, so a
+  caller looping over many routes can take that answer for one of them. Rows with a
+  missing coordinate or a missing or blank `stop_id` are dropped with a warning
+  giving the counts.
+
 # gps2gtfs 0.4.0
 
 New feature, opt-in and default-off. **Callers who do not set the new arguments get
