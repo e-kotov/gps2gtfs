@@ -103,9 +103,29 @@ terminals
 stops
 ```
 
-Without a baseline, supply the two tables by hand, or — when positions carry
-`stop_id` annotations — estimate stop coordinates from the pings themselves
-with `g2g_stops_from_positions()`.
+### Inputs without a GTFS
+
+A baseline feed is one of three ways to get the two tables. The two builder
+pairs — from a GTFS feed and from route geometry — each return both tables
+and label stop directions with terminal IDs, so neither needs a
+`stop_direction_map`. `g2g_stops_from_positions()` is narrower: it estimates
+stop coordinates only, and the `direction` labels have to come from elsewhere.
+
+* **From a GTFS feed** — `g2g_terminals_from_gtfs()` and
+  `g2g_stops_from_gtfs()`, above.
+* **From the positions themselves** — when pings carry `stop_id`
+  annotations, `g2g_stops_from_positions()` estimates each stop's coordinates
+  from the pings observed at it. It fills the coordinate columns only; the
+  `direction` label still has to come from somewhere else.
+* **From supplied route geometry** — `g2g_terminals_from_geometries()` and
+  `g2g_stops_from_geometries()` take the route's own linestrings (a long
+  `route_id`/`direction`/`vertex_seq`/`latitude`/`longitude` table, or an `sf`
+  object) plus a plain stop list. Each direction's terminal is the first vertex
+  of its line, and a stop joins a direction when it lies within `buffer_m` of
+  that direction's polyline — measured to the segments, so a stop midway along
+  a long segment is not missed.
+
+Failing all three, supply the two tables by hand.
 
 ## Extracting trips and stop times
 

@@ -127,3 +127,119 @@ make_route_inputs <- function() {
     )
   )
 }
+
+# --- Geometry-input fixtures (FR-9) -----------------------------------------
+# A straight two-direction corridor near the other fixtures' coordinates, laid
+# out in metres and converted to degrees with the same earth radius the
+# package's haversine uses (6371000 m), so every distance below is exact to
+# well under a millimetre:
+#
+#   1 m of latitude  = 1 / (6371000 * pi/180)            = 8.99320e-06 deg
+#   1 m of longitude = that / cos(7.29 deg)              = 9.06651e-06 deg
+#     (cos(7.29 deg) = 0.9919166; 110296.09 m per degree of longitude)
+#
+# Direction "A" runs west -> east along north = 0 m; direction "B" is the
+# reverse of it, 20 m north (the other side of the street). Vertices sit at
+# 0, 200, 400, 760, 960, 1160 m east, so the segments are 200, 200, 360, 200,
+# 200 m long and the third is the longest. Hand-worked distances:
+#
+#   terminal A = first vertex of A = (0 m E, 0 m N)
+#   terminal B = first vertex of B = (1160 m E, 20 m N)
+#   terminal separation  = sqrt(1160^2 + 20^2) = 1160.172 m   (> 150 m floor)
+#
+#   stop    east   north   to A line   to B line   nearest A vtx   nearest B vtx
+#   SA1      200      -8         8.0        28.0         8.0            28.0
+#   SA2      960      -8         8.0        28.0         8.0            28.0
+#   SB1      400      28        28.0         8.0        28.0             8.0
+#   SB2      760      28        28.0         8.0        28.0             8.0
+#   SMID     580       5         5.0        15.0       180.069         180.624
+#   SFAR     580     500       500.0       480.0       531.4           512.6
+#   SNA      200      NA          -           -          -               -
+#   ""       200      -8         8.0        28.0         8.0            28.0
+#
+# SMID is the segment-versus-vertex case: it sits at the midpoint of A's
+# 360 m segment, so sqrt(180^2 + 5^2) = 180.069 m from either end vertex but
+# 5 m from the line. sqrt(180^2 + 15^2) = 180.624 m from B's nearest vertex,
+# 15 m from B's line. At buffer_m = 50 a vertex rule finds it in neither
+# direction; the segment rule finds it in both.
+#
+# The 8 m / 28 m pairs are the cross-street case: at buffer_m = 50 every
+# corridor stop matches both directions, at buffer_m = 10 each matches only
+# its own side.
+#
+# Variants: "one" keeps only direction A; "three" adds a C branch 200 m north;
+# "same_start" replaces B with a west -> east line 40 m north of A, whose
+# first vertex is therefore 40 m from A's (the platform-separation warning).
+make_geometry_route <- function(
+  variant = c("two", "one", "three", "same_start")
+) {
+  variant <- match.arg(variant)
+
+  lat0 <- 7.29
+  lon0 <- 80.63
+  m_lat <- 1 / (6371000 * pi / 180)
+  m_lon <- m_lat / cos(lat0 * pi / 180)
+  east <- c(0, 200, 400, 760, 960, 1160)
+
+  line <- function(direction, east_m, north_m) {
+    data.frame(
+      route_id = "r1",
+      direction = direction,
+      vertex_seq = seq_along(east_m),
+      latitude = lat0 + north_m * m_lat,
+      longitude = lon0 + east_m * m_lon,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  a <- line("A", east, rep(0, length(east)))
+  b <- line("B", rev(east), rep(20, length(east)))
+
+  geometries <- switch(
+    variant,
+    two = rbind(a, b),
+    one = a,
+    three = rbind(a, b, line("C", east, rep(200, length(east)))),
+    same_start = rbind(a, line("B", east, rep(40, length(east))))
+  )
+
+  stops <- data.frame(
+    stop_id = c("SA1", "SA2", "SB1", "SB2", "SMID", "SFAR", "SNA", ""),
+    stop_name = paste("stop", 1:8),
+    east_m = c(200, 960, 400, 760, 580, 580, 200, 200),
+    north_m = c(-8, -8, 28, 28, 5, 500, NA, -8),
+    stringsAsFactors = FALSE
+  )
+  stops$latitude <- lat0 + stops$north_m * m_lat
+  stops$longitude <- lon0 + stops$east_m * m_lon
+  stops$east_m <- NULL
+  stops$north_m <- NULL
+
+  list(
+    geometries = geometries,
+    stops = stops,
+    # Interpolated pings along a direction's line, `spacing` metres apart, for
+    # the end-to-end pipeline test. Returned as a helper so the test can chain
+    # A then B into one vehicle's day.
+    path = function(direction, spacing = 40) {
+      v <- geometries[geometries$direction == direction, ]
+      v <- v[order(v$vertex_seq), ]
+      out_lat <- numeric(0)
+      out_lon <- numeric(0)
+      for (i in seq_len(nrow(v) - 1L)) {
+        d_m <- sqrt(
+          ((v$latitude[i + 1L] - v$latitude[i]) / m_lat)^2 +
+            ((v$longitude[i + 1L] - v$longitude[i]) / m_lon)^2
+        )
+        k <- max(1L, as.integer(round(d_m / spacing)))
+        f <- seq(0, 1, length.out = k + 1L)[-(k + 1L)]
+        out_lat <- c(out_lat, v$latitude[i] + f * diff(v$latitude[i:(i + 1L)]))
+        out_lon <- c(out_lon, v$longitude[i] + f * diff(v$longitude[i:(i + 1L)]))
+      }
+      data.frame(
+        latitude = c(out_lat, v$latitude[nrow(v)]),
+        longitude = c(out_lon, v$longitude[nrow(v)])
+      )
+    }
+  )
+}
