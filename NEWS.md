@@ -4,7 +4,8 @@
 
 * `g2g_extract_trips_and_stop_times()` gains `min_dwell` (seconds, default `0`):
   stop visits with a shorter dwell are dropped. A visit without a zero-speed
-  ping has zero dwell, so with pings a few seconds apart `min_dwell = 1`
+  ping, or whose only one is its last ping inside the stop's buffer, has zero
+  dwell, so with pings a few seconds apart `min_dwell = 1`
   removes pass-throughs (buffer crossings without stopping). With sparser
   pings a vehicle often stops between two of them, and the filter then also
   removes visits to stops that were served. The default keeps every visit, as

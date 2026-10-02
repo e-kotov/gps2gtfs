@@ -553,13 +553,14 @@ extract_stops_r <- function(
   )
   data.table::setcolorder(stop_times_dt, "date", after = "vehicle_id")
 
-  # Opt-in: drop visits shorter than min_dwell seconds. A vehicle that crosses
-  # a stop's buffer without a zero-speed ping is recorded with zero dwell.
+  # Opt-in: drop visits shorter than min_dwell seconds. A visit without a
+  # zero-speed ping, or whose only one is its last ping in the buffer, is
+  # recorded with zero dwell.
   if (min_dwell > 0) {
     if (all(is.na(stops_dt$speed))) {
       warning(
-        "'min_dwell' drops every stop visit: 'speed' is entirely NA, so no ",
-        "visit has a stationary ping and every dwell is 0.",
+        "'min_dwell' drops every stop visit: no ping inside a stop buffer has ",
+        "a 'speed', so no visit has a stationary ping and every dwell is 0.",
         call. = FALSE
       )
     }

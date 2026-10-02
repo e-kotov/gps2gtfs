@@ -124,7 +124,10 @@ test_that("min_dwell warns when speed is entirely NA", {
       invokeRestart("muffleWarning")
     }
   )
-  expect_true(any(grepl("'min_dwell' drops every stop visit", warned)))
+  expect_true(any(grepl(
+    "'min_dwell' drops every stop visit: no ping inside a stop buffer has a 'speed'",
+    warned
+  )))
   expect_identical(nrow(res$stop_times), 0L)
   # Without min_dwell only the cleaner's warning is raised.
   warned <- character()

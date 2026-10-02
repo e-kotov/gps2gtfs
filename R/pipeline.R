@@ -545,14 +545,15 @@ g2g_extract_trips <- function(
 #'   \code{getOption("gps2gtfs.diagnostics_warn", TRUE)}.
 #' @param min_dwell Numeric. Minimum dwell, in seconds, for a stop visit to be
 #'   kept; larger values also drop short stops. Default \code{0} keeps every
-#'   visit. Dwell is measured from zero-speed pings, so a visit without one has
-#'   zero dwell: a vehicle that crossed the stop's buffer without stopping, but
-#'   equally one that stopped between two pings. \code{min_dwell = 1}
+#'   visit. Dwell is measured from zero-speed pings, so a visit without one,
+#'   or whose only one is its last ping inside the buffer, has zero dwell: a
+#'   vehicle that crossed the stop's buffer without stopping, but equally one
+#'   that stopped between two pings. \code{min_dwell = 1}
 #'   therefore removes pass-throughs only where pings are a few seconds apart;
 #'   at 15-30 s intervals it also removes many visits to stops that were
 #'   served. Check the number dropped, reported in a message, before relying on
-#'   it. With \code{speed} entirely \code{NA} every dwell is 0, so any positive
-#'   value drops every visit (with a warning).
+#'   it. Without a \code{speed} on any ping inside a stop buffer every dwell
+#'   is 0, so any positive value drops every visit (with a warning).
 #' @return A list containing two data.tables: \code{trips} and
 #'   \code{stop_times}, plus \code{trajectory} when
 #'   \code{return_trajectory = TRUE}. All times (\code{start_time},
