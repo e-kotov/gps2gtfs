@@ -278,11 +278,13 @@ extract_stops_r <- function(
   projected = NULL,
   stop_direction_map = NULL,
   terminal_ids = NULL,
-  direction_levels = NULL
+  direction_levels = NULL,
+  min_dwell = 0
 ) {
   backend <- match.arg(backend, c("rcpp", "pure_r", "rust"))
   validate_positive_radius(buffer_radius, "buffer_radius")
   validate_positive_radius(extended_buffer_radius, "extended_buffer_radius")
+  validate_min_dwell(min_dwell)
 
   if (is.null(projected)) {
     projected <- attr(trajectory_dt, "projected")
@@ -527,7 +529,6 @@ extract_stops_r <- function(
       .(
         trip_id = trip_id[1],
         vehicle_id = vehicle_id[1],
-        date = date[1],
         direction = direction[1],
         bus_stop = bus_stop[1],
         arrival_time = arr_time,
@@ -541,6 +542,42 @@ extract_stops_r <- function(
     },
     by = grouped_ends
   ]
+
+  # The visit's date is its arrival's calendar date, in the timestamps' own
+  # timezone, like hour_of_day. The first in-buffer ping can fall on the day
+  # before when a vehicle enters the buffer just before midnight.
+  data.table::set(
+    stop_times_dt,
+    j = "date",
+    value = format(stop_times_dt$arrival_time, "%Y-%m-%d")
+  )
+  data.table::setcolorder(stop_times_dt, "date", after = "vehicle_id")
+
+  # Opt-in: drop visits shorter than min_dwell seconds. A vehicle that crosses
+  # a stop's buffer without a zero-speed ping is recorded with zero dwell.
+  if (min_dwell > 0) {
+    if (all(is.na(stops_dt$speed))) {
+      warning(
+        "'min_dwell' drops every stop visit: 'speed' is entirely NA, so no ",
+        "visit has a stationary ping and every dwell is 0.",
+        call. = FALSE
+      )
+    }
+    short <- stop_times_dt$dwell_time_in_seconds < min_dwell
+    if (any(short)) {
+      message(
+        "[INFO] Dropped ",
+        sum(short),
+        " stop visit(s) with dwell below 'min_dwell' (",
+        min_dwell,
+        " s)."
+      )
+      stop_times_dt <- stop_times_dt[!short]
+    }
+    if (nrow(stop_times_dt) == 0L) {
+      return(empty_stop_times(trajectory_dt$vehicle_id))
+    }
+  }
 
   # Add derived features
   weekday_features <- make_weekday_features(stop_times_dt$date)

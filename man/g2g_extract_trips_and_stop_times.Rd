@@ -30,7 +30,8 @@ g2g_extract_trips_and_stop_times(
   layover_gap = 10 * 60,
   layover_radius = 50,
   return_trajectory = FALSE,
-  diagnostics_warn = getOption("gps2gtfs.diagnostics_warn", TRUE)
+  diagnostics_warn = getOption("gps2gtfs.diagnostics_warn", TRUE),
+  min_dwell = 0
 )
 }
 \arguments{
@@ -183,6 +184,14 @@ unmatched segments, stops out of range) so unattended or agent-driven
 pipelines notice silent loss. The full breakdown is always available via
 \code{\link{g2g_diagnostics}} regardless of this flag. Default
 \code{getOption("gps2gtfs.diagnostics_warn", TRUE)}.}
+
+\item{min_dwell}{Numeric. Minimum dwell, in seconds, for a stop visit to be
+kept. A vehicle that crosses a stop's buffer without a zero-speed ping is
+still recorded as a visit, with zero dwell; \code{min_dwell = 1} drops
+those pass-throughs, and larger values also drop short stops. Default
+\code{0} keeps every visit. The number dropped is reported in a message.
+With \code{speed} entirely \code{NA} every dwell is 0, so any positive
+value drops every visit (with a warning).}
 }
 \value{
 A list containing two data.tables: \code{trips} and
@@ -190,7 +199,10 @@ A list containing two data.tables: \code{trips} and
   \code{return_trajectory = TRUE}. All times (\code{start_time},
   \code{end_time}, \code{arrival_time}, \code{departure_time}) are absolute
   \code{POSIXct} values in the timezone of the input timestamps — never
-  clock strings, so trips running past midnight stay unambiguous.
+  clock strings, so trips running past midnight stay unambiguous. In
+  \code{stop_times}, \code{date}, \code{day_of_week}, \code{is_weekday}
+  and \code{hour_of_day} describe the visit's \code{arrival_time} in that
+  timezone.
 
   Row order is a stable, backend-invariant contract: \code{trips} are
   ordered by the internal integer \code{trip_id}, and \code{stop_times} by

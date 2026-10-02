@@ -45,6 +45,17 @@ validate_layover_gap <- function(x) {
   }
 }
 
+validate_min_dwell <- function(x) {
+  if (
+    length(x) != 1L || !is.numeric(x) || is.na(x) || !is.finite(x) || x < 0
+  ) {
+    stop(
+      "'min_dwell' must be one non-negative finite number of seconds.",
+      call. = FALSE
+    )
+  }
+}
+
 validate_debounce_thresholds <- function(min_pings, min_seconds) {
   if (
     length(min_pings) != 1L || !is.numeric(min_pings) || is.na(min_pings) ||

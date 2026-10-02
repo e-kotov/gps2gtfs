@@ -1,3 +1,19 @@
+# gps2gtfs (development version)
+
+## New features
+
+* `g2g_extract_trips_and_stop_times()` gains `min_dwell` (seconds, default `0`):
+  stop visits with a shorter dwell are dropped. `min_dwell = 1` removes
+  pass-throughs, i.e. buffer crossings without a zero-speed ping, which are
+  otherwise recorded with zero dwell. The default keeps every visit, as before.
+
+## Bug fixes
+
+* `stop_times$date` (and so `day_of_week` and `is_weekday`) is now the date of
+  the visit's `arrival_time`, like `hour_of_day`. It used to be the date of the
+  first ping inside the stop's buffer, the previous day when a vehicle entered
+  the buffer just before midnight.
+
 # gps2gtfs 0.5.1
 
 ## Bug fixes
