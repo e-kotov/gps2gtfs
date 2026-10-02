@@ -187,15 +187,16 @@ pipelines notice silent loss. The full breakdown is always available via
 
 \item{min_dwell}{Numeric. Minimum dwell, in seconds, for a stop visit to be
 kept; larger values also drop short stops. Default \code{0} keeps every
-visit. Dwell is measured from zero-speed pings, so a visit without one,
-or whose only one is its last ping inside the buffer, has zero dwell: a
-vehicle that crossed the stop's buffer without stopping, but equally one
-that stopped between two pings. \code{min_dwell = 1}
-therefore removes pass-throughs only where pings are a few seconds apart;
-at 15-30 s intervals it also removes many visits to stops that were
-served. Check the number dropped, reported in a message, before relying on
-it. Without a \code{speed} on any ping inside a stop buffer every dwell
-is 0, so any positive value drops every visit (with a warning).}
+visit. Dwell is measured from zero-speed pings, so three kinds of visit
+have zero dwell: a vehicle that crossed the stop's buffer without
+stopping; one that stopped between two pings; and one seen stationary only
+on its last ping inside the buffer. \code{min_dwell = 1} removes all
+three, so it is not a pure pass-through filter. With pings a few seconds
+apart the last two are rare; at 15-30 s intervals they are common, and
+many visits to stops that were served are removed. Check the number
+dropped, reported in a message, before relying on it. Without a
+\code{speed} on any ping inside a stop buffer every dwell is 0, so any
+positive value drops every visit (with a warning).}
 }
 \value{
 A list containing two data.tables: \code{trips} and
