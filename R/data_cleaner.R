@@ -239,6 +239,17 @@ g2g_clean_gps <- function(
     }
     dt[, timestamp := as.POSIXct(timestamp, tz = parse_tz)]
   }
+  # Normalise storage to double for every input class. Integer epoch seconds
+  # (what fread reads) and POSIXct built from them keep integer storage
+  # through as.POSIXct(), and every time column derived downstream inherits
+  # it; `+ 15` in the stop extractor then yields double on one visit and
+  # integer on the next, which data.table refuses when it binds the groups.
+  # The epoch values are unchanged.
+  if (is.integer(dt$timestamp)) {
+    dt[,
+      timestamp := .POSIXct(as.double(timestamp), tz = attr(timestamp, "tzone"))
+    ]
+  }
   if (anyNA(dt$timestamp)) {
     stop(
       "raw GPS data 'timestamp' contains unparseable timestamps.",

@@ -515,6 +515,13 @@ extract_stops_r <- function(
         dep_time <- arr_time
       }
 
+      # Double storage on every branch: `+ 15` yields double while the other
+      # two branches keep the input storage, and data.table requires one
+      # storage type per column across groups. The epoch values are unchanged.
+      tzone <- attr(timestamp, "tzone")
+      arr_time <- .POSIXct(as.double(arr_time), tz = tzone)
+      dep_time <- .POSIXct(as.double(dep_time), tz = tzone)
+
       # Absolute POSIXct times: "HH:MM:SS" strings wrap at midnight, which
       # corrupts post-midnight stops of overnight trips downstream.
       .(

@@ -1,3 +1,19 @@
+# gps2gtfs (development version)
+
+* **Integer-storage timestamps no longer make departure inference fail.** Epoch
+  seconds read as integers (e.g. by `data.table::fread()`), or `POSIXct` built
+  from them with `as.POSIXct(<integer>, tz = )`, kept integer storage through
+  `g2g_clean_gps()`. The stop extractor's departure estimate is double on the
+  branch that adds 15 s to the last stationary ping and input-typed on the other
+  two, so `g2g_extract_trips_and_stop_times()` failed with `Column 7 of result
+  for group 2 is type 'double' but expecting type 'integer'` (or the converse)
+  whenever a feed mixed the two dwell patterns — i.e. depending on the data, not
+  on the call. `g2g_clean_gps()` now stores every timestamp as double `POSIXct`
+  whatever the input class, and the extractor returns double `arrival_time` and
+  `departure_time` on every branch. The epoch values are unchanged, so double
+  input produces exactly the output it did before. Regression tests use a
+  synthetic two-visit fixture in both visit orders.
+
 # gps2gtfs 0.5.0
 
 Two new exported functions. **Nothing else changed: every existing function behaves
