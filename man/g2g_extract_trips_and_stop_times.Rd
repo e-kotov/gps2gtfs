@@ -186,11 +186,14 @@ pipelines notice silent loss. The full breakdown is always available via
 \code{getOption("gps2gtfs.diagnostics_warn", TRUE)}.}
 
 \item{min_dwell}{Numeric. Minimum dwell, in seconds, for a stop visit to be
-kept. A vehicle that crosses a stop's buffer without a zero-speed ping is
-still recorded as a visit, with zero dwell; \code{min_dwell = 1} drops
-those pass-throughs, and larger values also drop short stops. Default
-\code{0} keeps every visit. The number dropped is reported in a message.
-With \code{speed} entirely \code{NA} every dwell is 0, so any positive
+kept; larger values also drop short stops. Default \code{0} keeps every
+visit. Dwell is measured from zero-speed pings, so a visit without one has
+zero dwell: a vehicle that crossed the stop's buffer without stopping, but
+equally one that stopped between two pings. \code{min_dwell = 1}
+therefore removes pass-throughs only where pings are a few seconds apart;
+at 15-30 s intervals it also removes many visits to stops that were
+served. Check the number dropped, reported in a message, before relying on
+it. With \code{speed} entirely \code{NA} every dwell is 0, so any positive
 value drops every visit (with a warning).}
 }
 \value{
