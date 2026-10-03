@@ -1,4 +1,4 @@
-# gps2gtfs (development version)
+# gps2gtfs 0.6.0
 
 ## New features
 
