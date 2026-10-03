@@ -142,10 +142,11 @@ The heavy steps run in one of three backends: compiled Rust (when a Rust
 toolchain was available at install time), C++ through Rcpp, or pure R with
 `data.table` and `sf`. `backend = "auto"` takes the first available, in that
 order. The startup message of each run names the backend used. The output does
-not depend on it: same rows, same values, same row order.
+not depend on it: same rows, same values, same row order. Every build includes
+the pure R backend (it needs `sf` at run time), so compare against it:
 
-```{r backends}
-rcpp <- g2g_extract_trips_and_stop_times(
+```{r backends, eval = requireNamespace("sf", quietly = TRUE)}
+pure_r <- g2g_extract_trips_and_stop_times(
   gps_data = g2g_data_gps,
   terminals_data = g2g_data_terminals,
   stops_data = g2g_data_stops,
@@ -153,10 +154,10 @@ rcpp <- g2g_extract_trips_and_stop_times(
   stops_buffer_radius = 30,
   stops_extended_buffer_radius = 50,
   stop_direction_map = direction_map,
-  backend = "rcpp",
+  backend = "pure_r",
   diagnostics_warn = FALSE
 )
-identical(rcpp$stop_times, result$stop_times)
+identical(pure_r$stop_times, result$stop_times)
 ```
 
 ## Where next
