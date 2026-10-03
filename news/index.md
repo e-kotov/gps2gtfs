@@ -111,20 +111,20 @@ arguments get byte-identical behaviour to 0.3.2.**
   two thresholds are validated: `min_pings` must be one whole number
   `>= 1`, `min_seconds` one non-negative finite number.
 
-- **Why it exists.** The `the downstream evaluation` evaluation
-  reported that the directional fast path labelled segments without
-  splitting them, producing 12-14 hour trips. 0.3.x fixed the package’s
-  *response* (it now errors on conflicting direction inside one supplied
-  trip identity); this release adds the cutting behaviour itself, which
-  was deferred at the time because a naive cut is not good enough —
-  cutting on every raw direction change inflates trip counts by about
-  17% and pushes fragmentation from 0.40 to 0.57. The debounce is what
-  makes the cut usable.
+- **Why it exists.** The `the downstream evaluation` evaluation reported
+  that the directional fast path labelled segments without splitting
+  them, producing 12-14 hour trips. 0.3.x fixed the package’s *response*
+  (it now errors on conflicting direction inside one supplied trip
+  identity); this release adds the cutting behaviour itself, which was
+  deferred at the time because a naive cut is not good enough — cutting
+  on every raw direction change inflates trip counts by about 17% and
+  pushes fragmentation from 0.40 to 0.57. The debounce is what makes the
+  cut usable.
 
 - **What the evaluation showed, on one dataset.** Against a
-  pre-registered, frozen acceptance gate on held-out the held-out region vehicles
-  (`vehicle A`, `vehicle B`), the default `N = 2` / `M = 600 s` setting
-  improved fragmentation, downstream frequency MAPE and median
+  pre-registered, frozen acceptance gate on held-out the held-out region
+  vehicles (`vehicle A`, `vehicle B`), the default `N = 2` / `M = 600 s`
+  setting improved fragmentation, downstream frequency MAPE and median
   trip-duration error relative to a naive route+direction cut, and met
   every registered bar. It is **worse** than that naive baseline on
   recovery and merge rate, which the gate did not require it to beat.

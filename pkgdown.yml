@@ -4,7 +4,7 @@ pkgdown_sha: ~
 articles:
   gps2gtfs: gps2gtfs.html
   gtfs-realtime: gtfs-realtime.html
-last_built: 2026-10-03T12:36Z
+last_built: 2026-10-03T16:22Z
 urls:
   reference: https://e-kotov.github.io/gps2gtfs/reference
   article: https://e-kotov.github.io/gps2gtfs/articles
