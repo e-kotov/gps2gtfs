@@ -20,3 +20,7 @@
 ^src/Makevars\.win$
 ^vignettes/.*\.html$
 ^tests/testthat/_problems$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^vignettes/articles$

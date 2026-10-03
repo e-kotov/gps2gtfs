@@ -1,0 +1,44 @@
+url: https://e-kotov.github.io/gps2gtfs/
+
+template:
+  bootstrap: 5
+  light-switch: true
+
+authors:
+  Egor Kotov:
+    href: "https://www.ekotov.pro"
+
+navbar:
+  structure:
+    left:  [intro, reference, articles, news]
+    right: [search, github, lightswitch]
+
+reference:
+  - title: "Clean GPS"
+    desc: >
+      Normalise raw pings: canonical column names, timezone, deduplication.
+    contents:
+      - g2g_clean_gps
+  - title: "Stops and terminals"
+    desc: >
+      Build the stop and terminal tables the extractor needs, from a planned
+      GTFS feed, from route geometry, or from annotated Vehicle Positions.
+    contents:
+      - starts_with("g2g_stops_from_")
+      - starts_with("g2g_terminals_from_")
+  - title: "Trips and stop times"
+    desc: >
+      Cut trajectories into trips, detect stop visits, and inspect what was
+      kept and dropped at each stage.
+    contents:
+      - starts_with("g2g_extract_trips")
+      - g2g_diagnostics
+  - title: "Shapes"
+    contents:
+      - g2g_shapes_from_trips
+  - title: "Example data"
+    desc: >
+      One bus on route 654 (Kandy to Digana, Sri Lanka) for one day, with the
+      route's stops and terminals; from the original Python gps2gtfs.
+    contents:
+      - starts_with("g2g_data_")

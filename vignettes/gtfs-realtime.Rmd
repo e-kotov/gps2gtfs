@@ -160,34 +160,39 @@ running past midnight stay unambiguous.
 `gps2gtfs` stops at coordinate inference on purpose: `route_id`, `service_id`,
 and canonical stop identities cannot be inferred from GPS alone, so the package
 does not invent them. Turning the inference tables into a standard-compliant
-feed — deriving `stop_sequence`, attributing each trip to a service day,
-encoding `>24:00:00` clock strings, and linking or synthesizing IDs — is the
+feed (deriving `stop_sequence`, attributing each trip to a service day,
+encoding `>24:00:00` clock strings, and linking or synthesizing IDs) is the
 job of the companion package
-[`gtfsrt2static`](https://github.com/e-kotov/gtfsrt2static) (a separate,
-optional install), which produces a feed the MobilityData `gtfs-validator`
-accepts:
+[`gtfsrt2static`](https://e-kotov.github.io/gtfsrt2static/), a separate,
+optional install. The handoff is three calls:
 
 ```{r assemble, eval = FALSE}
 # install.packages("pak"); pak::pak("e-kotov/gtfsrt2static")
 library(gtfsrt2static)
 
-events <- snapshot_from_stop_times(
+# The fast path keeps the GTFS-RT trip_id as `provided_trip_id`, which
+# becomes the event's trip identity, so official trip IDs survive.
+events <- rt2s_events_from_stop_times(
   result$stop_times,
-  trip_id_col = "provided_trip_id" # preserve official trip IDs when present
+  trip_id_col = "provided_trip_id"
 )
 
-# Baseline mode: inherit official route/service/stop IDs from a planned feed.
-feed <- snapshot_assemble(events)
+# Baseline mode: inherit official route, service and stop IDs from the
+# complete planned feed (a gtfsio object or a zip path), with the observed
+# times in stop_times.txt.
+feed <- rt2s_assemble(events, baseline = "planned_gtfs.zip")
 
-# ...or baseline-free, synthesizing a compliant feed (strict = publish gate):
-# feed <- snapshot_scaffold(events, strict = TRUE)
+# ...or, with no planned feed, scaffold a compliant feed from scratch
+# (strict = TRUE turns missing agency or stop coordinates into errors):
+# feed <- rt2s_scaffold(events, agency = list(...), stops = ..., strict = TRUE)
 
-gtfsio::export_gtfs(feed, "realized_gtfs.zip") # gtfstools/tidytransit-ready
+gtfsio::export_gtfs(feed, "realized_gtfs.zip")
 ```
 
-The chunk is not evaluated here because `gtfsrt2static` is a separate package;
-see its documentation for baseline vs. scaffold assembly and the strict-mode
-publish gate.
+The chunk is not evaluated here because `gtfsrt2static` is a separate package.
+[From raw GPS to a realized GTFS feed](https://e-kotov.github.io/gtfsrt2static/articles/pipeline.html)
+runs this handoff end to end, in both modes, and reads the result back with
+`gtfstools`.
 
 ## Shapes: the geometry actually driven
 

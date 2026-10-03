@@ -37,4 +37,6 @@ Config/rextendr/version: 0.5.0
 Encoding: UTF-8
 LazyData: true
 SystemRequirements: Cargo (Rust's package manager), rustc >= 1.65.0, xz
+URL: https://e-kotov.github.io/gps2gtfs/, https://github.com/e-kotov/gps2gtfs
+BugReports: https://github.com/e-kotov/gps2gtfs/issues
 Config/roxygen2/version: 8.1.0

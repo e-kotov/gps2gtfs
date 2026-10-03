@@ -1,0 +1,169 @@
+---
+title: "Get started with gps2gtfs"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Get started with gps2gtfs}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+`gps2gtfs` turns raw GPS pings from transit vehicles into GTFS-shaped `trips`
+and `stop_times` tables. This article runs the whole pipeline on the data that
+ships with the package: one day of pings from a bus on route 654 between Kandy
+and Digana, Sri Lanka.
+
+```{r setup}
+library(gps2gtfs)
+library(data.table)
+```
+
+## The inputs
+
+The extractor needs three tables:
+
+- **GPS pings**: one row per position report, with a vehicle id, coordinates,
+  a timestamp and, ideally, a speed.
+- **Terminals**: the points where trips start and end.
+- **Stops**: the stops of each direction of the route.
+
+```{r inputs}
+head(g2g_data_gps)
+g2g_data_terminals
+head(g2g_data_stops)
+```
+
+The stops are labelled by direction (`Kandy-Digana`, `Digana-Kandy`). Which
+label belongs to which terminal cannot be recovered from the data, because
+both directions run along the same road. You state it once, as a map from each
+label to the terminal its trips *start* from:
+
+```{r direction-map}
+direction_map <- c("Kandy-Digana" = "BT01", "Digana-Kandy" = "BT02")
+```
+
+## Step 1: clean the pings
+
+`g2g_clean_gps()` normalises the column names, drops pings with a zero
+latitude or longitude (the usual sentinel for a missing fix) and pings without
+a vehicle id, removes repeated `(vehicle_id, timestamp)`
+reports, and sorts each vehicle's pings in time. The extractor calls it
+internally, so you only call it yourself to inspect the result:
+
+```{r clean}
+gps <- g2g_clean_gps(g2g_data_gps)
+nrow(g2g_data_gps)
+nrow(gps)
+head(gps)
+```
+
+The first pings of the day sit at `(0, 0)` and are dropped.
+
+## Step 2: extract trips and stop times
+
+`g2g_extract_trips_and_stop_times()` cuts each vehicle's trajectory into trips
+between the terminal buffers, then finds the visits to each stop of the trip's
+direction. The buffer radii are in metres.
+
+```{r extract}
+result <- g2g_extract_trips_and_stop_times(
+  gps_data = g2g_data_gps,
+  terminals_data = g2g_data_terminals,
+  stops_data = g2g_data_stops,
+  terminals_buffer_radius = 50,
+  stops_buffer_radius = 30,
+  stops_extended_buffer_radius = 50,
+  stop_direction_map = direction_map,
+  return_trajectory = TRUE
+)
+```
+
+The bus made six trips, alternating between the two terminals:
+
+```{r trips}
+result$trips[, .(trip_id, start_terminal, end_terminal, direction,
+                 start_time, end_time, duration_in_mins)]
+```
+
+Each stop visit has an arrival, a departure and a dwell time:
+
+```{r stop-times}
+head(result$stop_times[, .(trip_id, stop_id, arrival_time, departure_time,
+                           dwell_time_in_seconds)], 10)
+```
+
+All times are absolute `POSIXct` values in the timezone of the input, not
+GTFS clock strings, so a trip that runs past midnight stays unambiguous. These
+are inference tables, not GTFS files yet: they carry no `route_id`,
+`service_id` or `stop_sequence`. Turning them into a valid feed is the job of
+[`gtfsrt2static`](https://e-kotov.github.io/gtfsrt2static/); see
+[From raw GPS to a realized GTFS feed](https://e-kotov.github.io/gtfsrt2static/articles/pipeline.html).
+
+## Step 3: check what was kept
+
+The extraction above warned that it lost coverage. Every stage records how
+many pings, segments and trips it kept or dropped, so a loss is visible rather
+than silent:
+
+```{r diagnostics}
+g2g_diagnostics(result)
+```
+
+Here the pings dropped at the trip stage fall outside every trip: the bus
+standing at a terminal between runs, before its first run and after its last.
+Cleaning removed the pings with a zero coordinate and the repeated reports. A large drop at another stage, such
+as rows without a trip identity or stops out of buffer range, is the signal to
+revisit the inputs or the radii. Silence the warning with
+`diagnostics_warn = FALSE` once you have looked.
+
+## Step 4: the shapes actually driven
+
+With `return_trajectory = TRUE` the result also carries the ping-level
+trajectory of each trip. `g2g_shapes_from_trips()` turns it into a table shaped
+like GTFS `shapes.txt`, with one shape per trip. Unlike planned shapes, these
+record the road the vehicle took, detours included:
+
+```{r shapes}
+shapes <- g2g_shapes_from_trips(result$trajectory)
+head(shapes)
+shapes[, .(points = .N, km = round(max(shape_dist_traveled) / 1000, 1)),
+       by = shape_id]
+```
+
+## Backends
+
+The heavy steps run in one of three backends: compiled Rust (when a Rust
+toolchain was available at install time), C++ through Rcpp, or pure R with
+`data.table` and `sf`. `backend = "auto"` takes the first available, in that
+order. The startup message of each run names the backend used. The output does
+not depend on it: same rows, same values, same row order.
+
+```{r backends}
+rcpp <- g2g_extract_trips_and_stop_times(
+  gps_data = g2g_data_gps,
+  terminals_data = g2g_data_terminals,
+  stops_data = g2g_data_stops,
+  terminals_buffer_radius = 50,
+  stops_buffer_radius = 30,
+  stops_extended_buffer_radius = 50,
+  stop_direction_map = direction_map,
+  backend = "rcpp",
+  diagnostics_warn = FALSE
+)
+identical(rcpp$stop_times, result$stop_times)
+```
+
+## Where next
+
+- [GTFS-Realtime Vehicle Positions to GTFS](gtfs-realtime.html): reading
+  archived feeds with `gtfsrealtime`, deriving stops and terminals from a
+  planned feed, and skipping trip inference when the pings carry a `trip_id`.
+- [From raw GPS to a realized GTFS feed](https://e-kotov.github.io/gtfsrt2static/articles/pipeline.html):
+  assembling these tables into a standard-compliant GTFS feed with
+  `gtfsrt2static` and reading it back with `gtfstools`.
