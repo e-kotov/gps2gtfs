@@ -277,11 +277,12 @@ toolchain was available at install time), C++ through Rcpp, or pure R
 with `data.table` and `sf`. `backend = "auto"` takes the first
 available, in that order. The startup message of each run names the
 backend used. The output does not depend on it: same rows, same values,
-same row order.
+same row order. Every build includes the pure R backend (it needs `sf`
+at run time), so compare against it:
 
 ``` r
 
-rcpp <- g2g_extract_trips_and_stop_times(
+pure_r <- g2g_extract_trips_and_stop_times(
   gps_data = g2g_data_gps,
   terminals_data = g2g_data_terminals,
   stops_data = g2g_data_stops,
@@ -289,14 +290,14 @@ rcpp <- g2g_extract_trips_and_stop_times(
   stops_buffer_radius = 30,
   stops_extended_buffer_radius = 50,
   stop_direction_map = direction_map,
-  backend = "rcpp",
+  backend = "pure_r",
   diagnostics_warn = FALSE
 )
-#> Starting Pipeline for extracting Trip and Bus Stop Data using backend: rcpp
+#> Starting Pipeline for extracting Trip and Bus Stop Data using backend: pure_r
 #> [INFO] Removed 56 duplicated (vehicle_id, timestamp) row(s).
 #> [INFO] Auto-detected local UTM projection EPSG:32644 (Zone 44N)
 #> Pipeline finished successfully!
-identical(rcpp$stop_times, result$stop_times)
+identical(pure_r$stop_times, result$stop_times)
 #> [1] TRUE
 ```
 

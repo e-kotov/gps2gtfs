@@ -331,9 +331,11 @@ Rust toolchain was available at install time), C++ through Rcpp, or pure
 R with <code>data.table</code> and <code>sf</code>.
 <code>backend = "auto"</code> takes the first available, in that order.
 The startup message of each run names the backend used. The output does
-not depend on it: same rows, same values, same row order.</p>
+not depend on it: same rows, same values, same row order. Every build
+includes the pure R backend (it needs <code>sf</code> at run time), so
+compare against it:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">rcpp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/g2g_extract_trips_and_stop_times.html">g2g_extract_trips_and_stop_times</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">pure_r</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/g2g_extract_trips_and_stop_times.html">g2g_extract_trips_and_stop_times</a></span><span class="op">(</span></span>
 <span>  gps_data <span class="op">=</span> <span class="va">g2g_data_gps</span>,</span>
 <span>  terminals_data <span class="op">=</span> <span class="va">g2g_data_terminals</span>,</span>
 <span>  stops_data <span class="op">=</span> <span class="va">g2g_data_stops</span>,</span>
@@ -341,14 +343,14 @@ not depend on it: same rows, same values, same row order.</p>
 <span>  stops_buffer_radius <span class="op">=</span> <span class="fl">30</span>,</span>
 <span>  stops_extended_buffer_radius <span class="op">=</span> <span class="fl">50</span>,</span>
 <span>  stop_direction_map <span class="op">=</span> <span class="va">direction_map</span>,</span>
-<span>  backend <span class="op">=</span> <span class="st">"rcpp"</span>,</span>
+<span>  backend <span class="op">=</span> <span class="st">"pure_r"</span>,</span>
 <span>  diagnostics_warn <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; Starting Pipeline for extracting Trip and Bus Stop Data using backend: rcpp</span></span>
+<span><span class="co">#&gt; Starting Pipeline for extracting Trip and Bus Stop Data using backend: pure_r</span></span>
 <span><span class="co">#&gt; [INFO] Removed 56 duplicated (vehicle_id, timestamp) row(s).</span></span>
 <span><span class="co">#&gt; [INFO] Auto-detected local UTM projection EPSG:32644 (Zone 44N)</span></span>
 <span><span class="co">#&gt; Pipeline finished successfully!</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="va">rcpp</span><span class="op">$</span><span class="va">stop_times</span>, <span class="va">result</span><span class="op">$</span><span class="va">stop_times</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="va">pure_r</span><span class="op">$</span><span class="va">stop_times</span>, <span class="va">result</span><span class="op">$</span><span class="va">stop_times</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
 </div>
 <div class="section level2">
