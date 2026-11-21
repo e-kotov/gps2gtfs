@@ -167,13 +167,14 @@ test_that("g2g_shapes_from_trips handles empty trajectories", {
   )
 })
 
-test_that("g2g_shapes_from_trips accepts trajectories with only local clock columns", {
+test_that("g2g_shapes_from_trips uses local clocks without a timestamp column", {
   trajectory <- data.table::data.table(
     trip_id = 1L,
     latitude = c(52.503, 52.501, 52.502),
     longitude = c(13.403, 13.401, 13.402),
     date = c("2026-01-02", "2026-01-01", "2026-01-01"),
-    time_str = c("00:10:00", "23:00:00", "23:50:00")
+    time_str = c("00:10:00", "23:00:00", "23:50:00"),
+    timestamp_reported = as.POSIXct("2026-01-02 14:00:00", tz = "UTC")
   )
   shapes <- g2g_shapes_from_trips(trajectory)
   expect_identical(shapes$shape_pt_lat, trajectory$latitude[c(2, 3, 1)])

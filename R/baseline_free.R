@@ -133,7 +133,8 @@ g2g_shapes_from_trips <- function(trajectory, shape_id_prefix = "SHP_") {
   }
 
   dt <- data.table::copy(dt)
-  time_keys <- if (inherits(dt$timestamp, "POSIXct") && !anyNA(dt$timestamp)) {
+  timestamp <- dt[["timestamp"]]
+  time_keys <- if (inherits(timestamp, "POSIXct") && !anyNA(timestamp)) {
     "timestamp"
   } else {
     c("date", "time_str")
