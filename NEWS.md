@@ -1,3 +1,8 @@
+# gps2gtfs (development version)
+
+* `g2g_shapes_from_trips()` now uses GPS instants to keep points in travel
+  order through the repeated hour when daylight saving time ends.
+
 # gps2gtfs 0.6.0
 
 ## New features

@@ -9,7 +9,9 @@ g2g_shapes_from_trips(trajectory, shape_id_prefix = "SHP_")
 \arguments{
 \item{trajectory}{A data.table of trajectory GPS records with columns
 \code{trip_id}, \code{latitude}, \code{longitude}, \code{date},
-\code{time_str} (as returned in the pipeline's \code{$trajectory}).}
+\code{time_str} (as returned in the pipeline's \code{$trajectory}).
+Points are ordered by \code{timestamp} when it contains complete
+\code{POSIXct} instants, or by \code{date} and \code{time_str} otherwise.}
 
 \item{shape_id_prefix}{Character prefix for generated shape ids. Default
 \code{"SHP_"} (shape ids become \code{SHP_<trip_id>}).}

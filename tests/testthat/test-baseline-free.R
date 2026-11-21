@@ -100,6 +100,51 @@ test_that("g2g_shapes_from_trips builds ordered per-trip traces", {
   expect_lt(max(shapes$shape_dist_traveled), 7000)
 })
 
+test_that("pipeline shapes follow GPS instants through Berlin's repeated hour", {
+  tz <- "Europe/Berlin"
+  instants <- as.POSIXct(c(
+    "2026-10-24 23:50:00", "2026-10-25 00:10:00", "2026-10-25 00:50:00",
+    "2026-10-25 01:10:00", "2026-10-25 01:50:00", "2026-10-25 02:10:00"
+  ), tz = "UTC")
+  gps <- data.frame(
+    vehicle_id = "V1",
+    trip_id = "T1",
+    direction_id = 0L,
+    latitude = 52.5 + seq_along(instants) / 1000,
+    longitude = 13.4 + seq_along(instants) / 1000,
+    timestamp = .POSIXct(as.numeric(instants), tz = tz),
+    speed = c(0, 20, 20, 20, 20, 0)
+  )
+  stops <- data.frame(
+    stop_id = c("A", "B"),
+    direction = 0L,
+    latitude = gps$latitude[c(1, 6)],
+    longitude = gps$longitude[c(1, 6)]
+  )
+
+  result <- suppressMessages(g2g_extract_trips_and_stop_times(
+    gps_data = gps[c(6, 2, 5, 4, 1, 3), ],
+    stops_data = stops,
+    stops_buffer_radius = 60,
+    stops_extended_buffer_radius = 90,
+    trip_col = "trip_id",
+    direction_col = "direction_id",
+    return_trajectory = TRUE
+  ))
+  expect_identical(length(unique(result$trajectory$trip_id)), 1L)
+  expect_identical(sort(as.numeric(result$trajectory$timestamp)), as.numeric(instants))
+  expect_identical(
+    format(gps$timestamp, "%H:%M %z", tz = tz),
+    c("01:50 +0200", "02:10 +0200", "02:50 +0200",
+      "02:10 +0100", "02:50 +0100", "03:10 +0100")
+  )
+
+  shapes <- g2g_shapes_from_trips(result$trajectory)
+  expect_identical(shapes$shape_pt_sequence, seq_along(instants))
+  expect_identical(shapes$shape_pt_lat, gps$latitude)
+  expect_identical(shapes$shape_pt_lon, gps$longitude)
+})
+
 test_that("g2g_shapes_from_trips handles empty trajectories", {
   empty <- data.table::data.table(
     trip_id = integer(),
@@ -120,4 +165,17 @@ test_that("g2g_shapes_from_trips handles empty trajectories", {
       "shape_dist_traveled"
     )
   )
+})
+
+test_that("g2g_shapes_from_trips accepts trajectories with only local clock columns", {
+  trajectory <- data.table::data.table(
+    trip_id = 1L,
+    latitude = c(52.503, 52.501, 52.502),
+    longitude = c(13.403, 13.401, 13.402),
+    date = c("2026-01-02", "2026-01-01", "2026-01-01"),
+    time_str = c("00:10:00", "23:00:00", "23:50:00")
+  )
+  shapes <- g2g_shapes_from_trips(trajectory)
+  expect_identical(shapes$shape_pt_lat, trajectory$latitude[c(2, 3, 1)])
+  expect_identical(shapes$shape_pt_lon, trajectory$longitude[c(2, 3, 1)])
 })

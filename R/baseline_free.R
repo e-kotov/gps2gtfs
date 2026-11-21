@@ -105,6 +105,8 @@ g2g_stops_from_positions <- function(
 #' @param trajectory A data.table of trajectory GPS records with columns
 #'   \code{trip_id}, \code{latitude}, \code{longitude}, \code{date},
 #'   \code{time_str} (as returned in the pipeline's \code{$trajectory}).
+#'   Points are ordered by \code{timestamp} when it contains complete
+#'   \code{POSIXct} instants, or by \code{date} and \code{time_str} otherwise.
 #' @param shape_id_prefix Character prefix for generated shape ids. Default
 #'   \code{"SHP_"} (shape ids become \code{SHP_<trip_id>}).
 #' @return A data.table with GTFS-standard columns \code{shape_id},
@@ -131,7 +133,12 @@ g2g_shapes_from_trips <- function(trajectory, shape_id_prefix = "SHP_") {
   }
 
   dt <- data.table::copy(dt)
-  data.table::setkeyv(dt, c("trip_id", "date", "time_str"))
+  time_keys <- if (inherits(dt$timestamp, "POSIXct") && !anyNA(dt$timestamp)) {
+    "timestamp"
+  } else {
+    c("date", "time_str")
+  }
+  data.table::setkeyv(dt, c("trip_id", time_keys))
 
   out <- dt[,
     {
