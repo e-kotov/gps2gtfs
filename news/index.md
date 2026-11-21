@@ -1,5 +1,13 @@
 # Changelog
 
+## gps2gtfs 0.6.1
+
+- Fixed the order of GPS points when clocks go back at the end of
+  daylight saving time.
+  [`g2g_shapes_from_trips()`](https://e-kotov.github.io/gps2gtfs/reference/g2g_shapes_from_trips.md)
+  now uses GPS timestamps to put points in travel order.
+- Added a Get started guide.
+
 ## gps2gtfs 0.6.0
 
 ### New features

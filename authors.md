@@ -13,12 +13,12 @@ Source:
 [`DESCRIPTION`](https://github.com/e-kotov/gps2gtfs/blob/main/DESCRIPTION)
 
 Kotov E (2026). *gps2gtfs: High-Performance GPS to GTFS Converter*. R
-package version 0.6.0, <https://e-kotov.github.io/gps2gtfs/>.
+package version 0.6.1, <https://e-kotov.github.io/gps2gtfs/>.
 
     @Manual{,
       title = {gps2gtfs: High-Performance GPS to GTFS Converter},
       author = {Egor Kotov},
       year = {2026},
-      note = {R package version 0.6.0},
+      note = {R package version 0.6.1},
       url = {https://e-kotov.github.io/gps2gtfs/},
     }

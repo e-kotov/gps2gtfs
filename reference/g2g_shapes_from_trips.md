@@ -17,7 +17,9 @@ g2g_shapes_from_trips(trajectory, shape_id_prefix = "SHP_")
 
   A data.table of trajectory GPS records with columns `trip_id`,
   `latitude`, `longitude`, `date`, `time_str` (as returned in the
-  pipeline's `$trajectory`).
+  pipeline's `$trajectory`). Points are ordered by `timestamp` when it
+  contains complete `POSIXct` instants, or by `date` and `time_str`
+  otherwise.
 
 - shape_id_prefix:
 
