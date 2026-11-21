@@ -1,7 +1,9 @@
-# gps2gtfs (development version)
+# gps2gtfs 0.6.1
 
-* `g2g_shapes_from_trips()` now uses GPS instants to keep points in travel
-  order through the repeated hour when daylight saving time ends.
+* Fixed the order of GPS points when clocks go back at the end of daylight
+  saving time. `g2g_shapes_from_trips()` now uses GPS timestamps to put points
+  in travel order.
+* Added a Get started guide.
 
 # gps2gtfs 0.6.0
 
